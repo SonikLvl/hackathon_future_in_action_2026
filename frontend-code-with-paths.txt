@@ -1,0 +1,306 @@
+===== frontend/.gitignore =====
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+===== frontend/eslint.config.js =====
+import js from '@eslint/js'
+import globals from 'globals'
+import reactHooks from 'eslint-plugin-react-hooks'
+import reactRefresh from 'eslint-plugin-react-refresh'
+import tseslint from 'typescript-eslint'
+import { defineConfig, globalIgnores } from 'eslint/config'
+
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      js.configs.recommended,
+      tseslint.configs.recommended,
+      reactHooks.configs.flat.recommended,
+      reactRefresh.configs.vite,
+    ],
+    languageOptions: {
+      globals: globals.browser,
+    },
+  },
+])
+
+===== frontend/index.html =====
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>frontend</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
+===== frontend/package.json =====
+{
+  "name": "varta-frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/vite": "^4.3.2",
+    "@types/node": "^24.13.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "eslint": "^10.6.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^17.7.0",
+    "prettier": "^3.9.4",
+    "tailwindcss": "^4.3.2",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.62.0",
+    "vite": "^8.1.1"
+  }
+}
+
+===== frontend/README.md =====
+# VARTA Frontend
+
+React + TypeScript frontend for the VARTA hackathon MVP.
+
+## Routes
+
+- `/demo` — laptop demo console
+- `/bracelet` — phone bracelet prototype
+- `/bracelet-preview` — video-friendly bracelet preview
+
+## Local setup
+
+```bash
+npm install
+npm run dev
+```
+
+===== frontend/src/app/App.tsx =====
+import { BraceletPage } from "../pages/bracelet/BraceletPage";
+import { BraceletPreviewPage } from "../pages/bracelet-preview/BraceletPreviewPage";
+import { DemoPage } from "../pages/demo/DemoPage";
+
+const routes = {
+  "/": <DemoPage />,
+  "/demo": <DemoPage />,
+  "/bracelet": <BraceletPage />,
+  "/bracelet-preview": <BraceletPreviewPage />,
+} as const;
+
+export function App() {
+  const pathname = window.location.pathname as keyof typeof routes;
+
+  return routes[pathname] ?? <DemoPage />;
+}
+
+===== frontend/src/index.css =====
+@import "tailwindcss";
+
+:root {
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  color-scheme: dark;
+  background: #020617;
+  color: #f8fafc;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+===== frontend/src/main.tsx =====
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+
+import { App } from "./app/App";
+
+import "./index.css";
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);
+
+===== frontend/src/pages/bracelet/BraceletPage.tsx =====
+export function BraceletPage() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-emerald-950 px-6 text-emerald-50">
+      <section className="text-center">
+        <p className="text-sm uppercase tracking-[0.3em] text-emerald-300">
+          VARTA
+        </p>
+        <h1 className="mt-4 text-4xl font-semibold">Safe</h1>
+        <p className="mt-3 text-emerald-200">
+          Bracelet prototype is waiting for alerts.
+        </p>
+      </section>
+    </main>
+  );
+}
+
+===== frontend/src/pages/bracelet-preview/BraceletPreviewPage.tsx =====
+import { BraceletPage } from "../bracelet/BraceletPage";
+
+export function BraceletPreviewPage() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-slate-950 p-8">
+      <section className="h-[720px] w-[360px] overflow-hidden rounded-[44px] border-8 border-slate-800 bg-black shadow-2xl">
+        <BraceletPage />
+      </section>
+    </main>
+  );
+}
+
+===== frontend/src/pages/demo/DemoPage.tsx =====
+export function DemoPage() {
+  return (
+    <main className="min-h-screen bg-slate-950 px-8 py-6 text-slate-50">
+      <p className="text-sm uppercase tracking-[0.3em] text-cyan-300">VARTA</p>
+      <h1 className="mt-4 text-4xl font-semibold">Demo Console</h1>
+      <p className="mt-3 max-w-2xl text-slate-300">
+        Laptop control surface for scenarios, vehicle movement, risk
+        calculation, and event log.
+      </p>
+    </main>
+  );
+}
+
+===== frontend/tsconfig.app.json =====
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "types": ["vite/client"],
+    "allowArbitraryExtensions": true,
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"]
+}
+
+===== frontend/tsconfig.json =====
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}
+
+===== frontend/tsconfig.node.json =====
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "module": "nodenext",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["vite.config.ts"]
+}
+
+===== frontend/vite.config.ts =====
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+});
+
