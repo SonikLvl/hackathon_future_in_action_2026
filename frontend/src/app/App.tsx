@@ -1,6 +1,6 @@
-import { BraceletPage } from "../pages/bracelet/BraceletPage";
-import { BraceletPreviewPage } from "../pages/bracelet-preview/BraceletPreviewPage";
-import { DemoPage } from "../pages/demo/DemoPage";
+import { BraceletPage } from "@/pages/bracelet/BraceletPage";
+import { BraceletPreviewPage } from "@/pages/bracelet-preview/BraceletPreviewPage";
+import { DemoPage } from "@/pages/demo/DemoPage";
 
 const routes = {
   "/": <DemoPage />,

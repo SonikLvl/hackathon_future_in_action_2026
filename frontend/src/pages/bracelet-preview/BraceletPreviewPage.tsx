@@ -1,4 +1,4 @@
-import { BraceletPage } from "../bracelet/BraceletPage";
+import { BraceletPage } from "@/pages/bracelet/BraceletPage";
 
 export function BraceletPreviewPage() {
   return (
