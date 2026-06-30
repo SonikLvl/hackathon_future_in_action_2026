@@ -1,0 +1,31 @@
+#!/usr/bin/env sh
+set -eu
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+staged_frontend_files="$(
+  git diff --cached --name-only --diff-filter=ACMR \
+    | grep -E '^frontend/.*\.(ts|tsx|js|jsx|json|css|md|html)$' || true
+)"
+
+if [ -z "$staged_frontend_files" ]; then
+  echo "No staged frontend files to format."
+  exit 0
+fi
+
+echo "Formatting staged frontend files..."
+
+cd "$repo_root/frontend"
+
+frontend_relative_files="$(
+  printf "%s\n" "$staged_frontend_files" | sed 's#^frontend/##'
+)"
+
+printf "%s\n" "$frontend_relative_files" | xargs ./node_modules/.bin/prettier --write
+
+cd "$repo_root"
+
+printf "%s\n" "$staged_frontend_files" | xargs git add
+
+echo "Frontend staged files formatted."
