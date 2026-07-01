@@ -1,47 +1,27 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
 from contextlib import asynccontextmanager
-from db import get_db, init_db
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 import asyncio
+import time
+from sqlalchemy.future import select
+from models import User, Device, Incident
 
-# ---------- "Гарячий" стан  ----------
-active_devices: dict = {}
-state_lock = asyncio.Lock()
-
-# ---------- Менеджер WebSocket-з'єднань ----------
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: dict[str, WebSocket] = {}
-
-    async def connect(self, websocket: WebSocket, client_id: str):
-        await websocket.accept()
-        self.active_connections[client_id] = websocket
-
-    def disconnect(self, client_id: str):
-        self.active_connections.pop(client_id, None)
-
-    async def send_personal_message(self, message: str, client_id: str):
-        ws = self.active_connections.get(client_id)
-        if ws:
-            await ws.send_text(message)
-
-manager = ConnectionManager()
-
-# ---------- Risk Engine (поки що заглушка) ----------
-async def risk_engine_loop():
-    while True:
-        async with state_lock:
-            devices_snapshot = dict(active_devices)
-        # тимчасово просто друкуємо, що бачимо у пам'яті
-        print("Поточні пристрої:", devices_snapshot)
-        await asyncio.sleep(1)
+# Власні модулі
+from db import get_db, init_db
+from state import active_devices, state_lock
+from risk_engine import risk_engine_loop
+from connection_manager import manager
+from schemas import TelemetryInput, UserResponse, DeviceResponse, IncidentResponse
+from seed import seed_test_data
 
 # ---------- Запуск і зупинка фонової задачі ----------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     print("База даних успішно ініціалізована!")
+    
+    await seed_test_data()
     
     task = asyncio.create_task(risk_engine_loop())
     
@@ -51,10 +31,25 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 @app.post("/api/telemetry")
-async def telemetry(data: dict):
+async def telemetry(data: TelemetryInput):
+    # Генеруємо час оновлення саме на сервері, щоб уникнути розсинхрону часу на клієнтських пристроях
+    current_time = time.time()
+    
+    # Формуємо об'єкт стану для оперативної пам'яті
+    device_state = {
+        "is_pedestrian": data.is_pedestrian,
+        "lat": data.lat,
+        "lon": data.lon,
+        "speed": data.speed,
+        "azimuth": data.azimuth,
+        "last_updated": current_time 
+    }
+
+    # Блокуємо словник для безпечного запису в асинхронному середовищі
     async with state_lock:
-        active_devices[data["device_id"]] = data
-    return {"status": "ok"}
+        active_devices[data.device_id] = device_state
+        
+    return {"status": "ok", "processed_at": current_time}
 
 @app.get("/api/health")
 async def check_database_connection(db: AsyncSession = Depends(get_db)):
@@ -75,6 +70,31 @@ async def check_database_connection(db: AsyncSession = Depends(get_db)):
             "message": "Помилка підключення до БД",
             "details": str(e)
         }
+
+# ---------- Ендпоінти для перегляду БД ----------
+
+@app.get("/api/users", response_model=list[UserResponse], tags=["Database"])
+async def get_all_users(db: AsyncSession = Depends(get_db)):
+    """Повертає список усіх зареєстрованих користувачів"""
+    result = await db.execute(select(User))
+    users = result.scalars().all()
+    return users
+
+@app.get("/api/devices", response_model=list[DeviceResponse], tags=["Database"])
+async def get_all_devices(db: AsyncSession = Depends(get_db)):
+    """Повертає список усіх зареєстрованих пристроїв"""
+    result = await db.execute(select(Device))
+    devices = result.scalars().all()
+    return devices
+
+@app.get("/api/incidents", response_model=list[IncidentResponse], tags=["Database"])
+async def get_all_incidents(db: AsyncSession = Depends(get_db)):
+    """Повертає історію всіх небезпечних зближень (для дашбордів)"""
+    # Сортуємо інциденти так, щоб найновіші були зверху
+    result = await db.execute(select(Incident).order_by(Incident.timestamp.desc()))
+    incidents = result.scalars().all()
+    return incidents
+
 
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str):

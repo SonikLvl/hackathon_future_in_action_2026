@@ -1,1 +1,5 @@
-# place for hot data -- dicts
+import asyncio
+
+# Єдине сховище для всіх модулів
+active_devices: dict = {}
+state_lock = asyncio.Lock()
