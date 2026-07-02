@@ -33,5 +33,6 @@ export type BraceletAlert = {
   timeToConflictSeconds: number | null;
   vehicleId: string | null;
   vehicleType: string | null;
+  speedKmh: number | null;
   reason: string | null;
 };

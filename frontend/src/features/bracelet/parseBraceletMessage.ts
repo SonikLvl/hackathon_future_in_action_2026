@@ -112,6 +112,7 @@ export function parseBraceletMessage(rawMessage: string): BraceletAlert {
           timeToConflictSeconds: structuredEvent.timeToConflictSeconds,
           vehicleId: structuredEvent.vehicleId,
           vehicleType: structuredEvent.vehicleType,
+          speedKmh: structuredEvent.speedKmh,
           reason: structuredEvent.reason,
         };
       }
@@ -129,6 +130,7 @@ export function parseBraceletMessage(rawMessage: string): BraceletAlert {
         timeToConflictSeconds: parseNumber(parsed.timeToConflictSeconds),
         vehicleId: parseOptionalString(parsed.vehicleId),
         vehicleType: parseOptionalString(parsed.vehicleType),
+        speedKmh: parseNumber(parsed.speedKmh),
         reason: parseOptionalString(parsed.reason),
       };
     }
@@ -147,6 +149,7 @@ export function parseBraceletMessage(rawMessage: string): BraceletAlert {
     timeToConflictSeconds: null,
     vehicleId: null,
     vehicleType: null,
+    speedKmh: null,
     reason: null,
   };
 }
