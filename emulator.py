@@ -52,11 +52,12 @@ async def listen_to_alerts(stop_event: asyncio.Event):
     except Exception as e:
         print(f"[ПІШОХІД] З'єднання втрачено: {e}")
 
-def build_scenario(name: str) -> tuple[list[Actor], int]:
+def build_scenario(include_bike: bool) -> tuple[list[Actor], int]:
     """
-    Return actors and duration in ticks.
-    - headon: one scooter approaches pedestrian head-on
-    - realistic: two vehicles create richer demo geometry
+    Простий та зрозумілий сценарій:
+    1) Пішохід рухається вперед
+    2) Самокат наближається назустріч
+    3) (Опційно) Велосипед перетинає траєкторію збоку
     """
     pedestrian = Actor(
         device_id="pedestrian_1",
@@ -79,10 +80,10 @@ def build_scenario(name: str) -> tuple[list[Actor], int]:
         dlon_mps=0.0,
     )
 
-    if name == "headon":
+    if not include_bike:
         return [pedestrian, scooter], 50
 
-    # Secondary vehicle crossing from right to left.
+    # Secondary vehicle crossing from right to left (optional).
     bicycle = Actor(
         device_id="bike_1",
         is_pedestrian=False,
@@ -103,12 +104,15 @@ async def post_actor(session: aiohttp.ClientSession, actor: Actor):
         raise RuntimeError(f"Telemetry POST failed for {actor.device_id}: {response.status} {body}")
 
 
-async def simulate_movement(scenario_name: str):
-    """Фонова задача: відправляє координати, імітуючи рух реалістичного сценарію."""
-    actors, total_ticks = build_scenario(scenario_name)
+async def simulate_movement(include_bike: bool):
+    """Відправляє простий, фазовий сценарій телеметрії."""
+    actors, total_ticks = build_scenario(include_bike)
 
     async with aiohttp.ClientSession() as session:
-        print(f"[ТЕЛЕМЕТРІЯ] Сценарій '{scenario_name}' запущено. actors={len(actors)} tick={TICK_SECONDS}s")
+        print(
+            f"[ТЕЛЕМЕТРІЯ] Сценарій запущено. actors={len(actors)} "
+            f"(bike={'on' if include_bike else 'off'}) tick={TICK_SECONDS}s"
+        )
 
         for tick in range(total_ticks):
             for actor in actors:
@@ -123,23 +127,31 @@ async def simulate_movement(scenario_name: str):
 
             await asyncio.sleep(TICK_SECONDS)
 
+        # Стабілізація: зупиняємо ТЗ і відправляємо кілька "спокійних" кадрів.
+        print("[ТЕЛЕМЕТРІЯ] Фаза стабілізації: зупиняємо транспорт...")
+        for actor in actors:
+            if not actor.is_pedestrian:
+                actor.speed_mps = 0.0
+                actor.dlat_mps = 0.0
+                actor.dlon_mps = 0.0
+
+        for _ in range(4):
+            for actor in actors:
+                await post_actor(session, actor)
+            await asyncio.sleep(TICK_SECONDS)
+
         print("🏁 Симуляція завершена.")
 
 async def main():
     parser = argparse.ArgumentParser(description="VARTA telemetry emulator")
-    parser.add_argument(
-        "--scenario",
-        choices=["headon", "realistic"],
-        default="realistic",
-        help="Scenario preset",
-    )
+    parser.add_argument("--with-bike", action="store_true", help="Add side-crossing bike actor")
     args = parser.parse_args()
 
     stop_event = asyncio.Event()
     listener_task = asyncio.create_task(listen_to_alerts(stop_event))
 
     try:
-        await simulate_movement(args.scenario)
+        await simulate_movement(include_bike=args.with_bike)
 
         # Даємо час на доставку фінальних алертів з бекенду
         print(f"⌛ Очікуємо фінальні алерти ще {FINAL_ALERT_GRACE_SECONDS}с...")

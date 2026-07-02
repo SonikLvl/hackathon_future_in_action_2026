@@ -48,6 +48,9 @@ function createPedestrianActor(): SimulationActor {
 
 function lerpAdaptive(current: number, target: number): number {
   const delta = Math.abs(target - current);
+  if (delta < 0.015) {
+    return target;
+  }
   const adaptive = Math.min(0.24, BASE_SMOOTHING + delta * 0.015);
   return current + (target - current) * adaptive;
 }
