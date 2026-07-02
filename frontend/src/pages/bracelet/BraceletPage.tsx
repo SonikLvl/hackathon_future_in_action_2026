@@ -5,15 +5,15 @@ import { useBraceletSocket } from "@/features/bracelet/useBraceletSocket";
 
 const severityTitle: Record<AlertSeverity, string> = {
   safe: "Safe",
+  caution: "Caution",
   warning: "Warning",
-  high: "High alert",
   critical: "Critical alert",
 };
 
 const severityClassName: Record<AlertSeverity, string> = {
   safe: "bg-emerald-950 text-emerald-50",
-  warning: "bg-amber-950 text-amber-50",
-  high: "bg-orange-950 text-orange-50",
+  caution: "bg-yellow-950 text-yellow-50",
+  warning: "bg-orange-950 text-orange-50",
   critical: "bg-red-950 text-red-50",
 };
 
@@ -30,6 +30,17 @@ export function BraceletPage() {
 
   const severity = alert?.severity ?? "safe";
   const isAlertActive = Boolean(alert);
+  const hasMetrics = Boolean(
+    alert && (alert.distanceMeters !== null || alert.timeToConflictSeconds !== null),
+  );
+  const distanceText =
+    alert?.distanceMeters !== null && alert?.distanceMeters !== undefined
+      ? `${alert.distanceMeters.toFixed(1)} m`
+      : "Distance n/a";
+  const ttcText =
+    alert?.timeToConflictSeconds !== null && alert?.timeToConflictSeconds !== undefined
+      ? `${alert.timeToConflictSeconds.toFixed(1)} s to conflict`
+      : "TTC n/a";
 
   useEffect(() => {
     if (!alert) {
@@ -64,6 +75,12 @@ export function BraceletPage() {
           <p className="mt-6 text-xl leading-relaxed">
             {alert?.message ?? "Bracelet prototype is waiting for alerts."}
           </p>
+
+          {hasMetrics ? (
+            <p className="mt-3 text-sm opacity-80">
+              {distanceText} {" • "} {ttcText}
+            </p>
+          ) : null}
         </div>
 
         {isAlertActive ? (

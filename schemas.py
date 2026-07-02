@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal, Optional
 
 class TelemetryInput(BaseModel):
     device_id: str = Field(..., description="Унікальний ID пристрою (з таблиці devices)")
@@ -36,3 +36,26 @@ class IncidentResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+AlertSeverity = Literal["safe", "caution", "warning", "critical"]
+AlertDirection = Literal["front", "back", "left", "right", "unknown"]
+EventType = Literal["risk_alert"]
+
+
+class RiskAlertEvent(BaseModel):
+    type: EventType = "risk_alert"
+    version: int = 1
+    timestamp: str
+    deviceId: str
+    vehicleId: str
+    severity: AlertSeverity
+    riskScore: int = Field(..., ge=0, le=100)
+    message: str
+    direction: AlertDirection
+    distanceMeters: float = Field(..., ge=0)
+    timeToConflictSeconds: Optional[float] = Field(default=None, ge=0)
+    vehicleType: Optional[str] = None
+    speedKmh: float = Field(..., ge=0)
+    reason: str
+    vibrationPattern: list[int] = Field(default_factory=list)
