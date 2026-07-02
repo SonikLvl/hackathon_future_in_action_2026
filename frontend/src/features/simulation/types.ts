@@ -26,7 +26,8 @@ export type SimulationVector = {
 export type SimulationSnapshot = {
   severity: AlertSeverity;
   actors: SimulationActor[];
-  threatVector: SimulationVector | null;
+  threatVectors: SimulationVector[];
+  primaryThreatVehicleId: string | null;
   conflictPoint: ScenePoint;
   impactRadius: number;
 };

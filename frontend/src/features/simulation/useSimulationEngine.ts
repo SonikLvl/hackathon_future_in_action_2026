@@ -12,12 +12,22 @@ import type { SimulationActor, SimulationSnapshot } from "@/features/simulation/
 const TRAIL_LIMIT = 14;
 const TRAIL_RECORD_INTERVAL_MS = 120;
 const SMOOTHING = 0.12;
+const STALE_VEHICLE_TIMEOUT_MS = 7000;
 
 type UseSimulationEngineInput = {
   activeAlert: BraceletAlert | null;
 };
 
 const PEDESTRIAN_ID = "pedestrian_1";
+const FALLBACK_VEHICLE_ID = "vehicle_unknown";
+
+type VehicleMotionState = {
+  target: { x: number; y: number };
+  lastUpdatedAt: number;
+  lastRiskScore: number;
+  ttcSeconds: number | null;
+  severity: BraceletAlert["severity"];
+};
 
 function createPedestrianActor(): SimulationActor {
   const center = getSceneCenter();
@@ -42,23 +52,29 @@ export function useSimulationEngine({ activeAlert }: UseSimulationEngineInput) {
     [PEDESTRIAN_ID]: createPedestrianActor(),
   });
 
-  const targetRef = useRef<{ x: number; y: number } | null>(null);
   const latestSpeedRef = useRef<number>(10);
   const trailTickRef = useRef<number>(0);
+  const vehicleStateRef = useRef<Record<string, VehicleMotionState>>({});
 
   useEffect(() => {
     if (!activeAlert) {
       return;
     }
 
-    const vehicleId = activeAlert.vehicleId ?? "vehicle_unknown";
+    const vehicleId = activeAlert.vehicleId ?? FALLBACK_VEHICLE_ID;
     const nextTarget = mapThreatToTarget(
       activeAlert.direction,
       activeAlert.distanceMeters,
       activeAlert.timeToConflictSeconds,
     );
-    targetRef.current = nextTarget;
     latestSpeedRef.current = activeAlert.speedKmh ?? latestSpeedRef.current;
+    vehicleStateRef.current[vehicleId] = {
+      target: nextTarget,
+      lastUpdatedAt: activeAlert.receivedAt,
+      lastRiskScore: activeAlert.riskScore ?? 0,
+      ttcSeconds: activeAlert.timeToConflictSeconds,
+      severity: activeAlert.severity,
+    };
 
     setActors((currentActors) => {
       const pedestrian = currentActors[PEDESTRIAN_ID] ?? createPedestrianActor();
@@ -104,13 +120,26 @@ export function useSimulationEngine({ activeAlert }: UseSimulationEngineInput) {
 
         let changed = false;
         const nextActors = entries.reduce<Record<string, SimulationActor>>((acc, [id, actor]) => {
-          if (actor.kind !== "vehicle" || !targetRef.current) {
+          if (actor.kind !== "vehicle") {
             acc[id] = actor;
             return acc;
           }
 
-          const nextX = lerp(actor.position.x, targetRef.current.x);
-          const nextY = lerp(actor.position.y, targetRef.current.y);
+          const vehicleState = vehicleStateRef.current[id];
+          if (!vehicleState) {
+            acc[id] = actor;
+            return acc;
+          }
+
+          const ageMs = timestamp - vehicleState.lastUpdatedAt;
+          if (ageMs > STALE_VEHICLE_TIMEOUT_MS) {
+            changed = true;
+            delete vehicleStateRef.current[id];
+            return acc;
+          }
+
+          const nextX = lerp(actor.position.x, vehicleState.target.x);
+          const nextY = lerp(actor.position.y, vehicleState.target.y);
           const velocity = {
             x: nextX - actor.position.x,
             y: nextY - actor.position.y,
@@ -132,7 +161,7 @@ export function useSimulationEngine({ activeAlert }: UseSimulationEngineInput) {
             position: { x: nextX, y: nextY },
             velocity,
             headingDeg,
-            speedKmh: latestSpeedRef.current,
+            speedKmh: actor.speedKmh > 0 ? actor.speedKmh : latestSpeedRef.current,
             trail: nextTrail,
           };
 
@@ -157,18 +186,30 @@ export function useSimulationEngine({ activeAlert }: UseSimulationEngineInput) {
     const severity = activeAlert?.severity ?? "safe";
     const center = getSceneCenter();
     const actorList = Object.values(actors);
-    const primaryVehicle = actorList.find((actor) => actor.kind === "vehicle") ?? null;
+    const vehicleActors = actorList.filter((actor) => actor.kind === "vehicle");
+
+    const primaryVehicle = vehicleActors
+      .map((vehicle) => ({
+        vehicle,
+        state: vehicleStateRef.current[vehicle.id],
+      }))
+      .sort((a, b) => {
+        const scoreDiff = (b.state?.lastRiskScore ?? 0) - (a.state?.lastRiskScore ?? 0);
+        if (scoreDiff !== 0) {
+          return scoreDiff;
+        }
+        return (b.state?.lastUpdatedAt ?? 0) - (a.state?.lastUpdatedAt ?? 0);
+      })[0]?.vehicle;
 
     return {
       severity,
       actors: actorList,
       conflictPoint: center,
-      threatVector: primaryVehicle
-        ? {
-            from: primaryVehicle.position,
-            to: center,
-          }
-        : null,
+      threatVectors: vehicleActors.map((vehicle) => ({
+        from: vehicle.position,
+        to: center,
+      })),
+      primaryThreatVehicleId: primaryVehicle?.id ?? null,
       impactRadius: getImpactRadius(severity, activeAlert?.timeToConflictSeconds ?? null),
     };
   }, [activeAlert?.severity, activeAlert?.timeToConflictSeconds, actors]);

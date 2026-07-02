@@ -30,6 +30,8 @@ type ThreatSceneProps = {
 };
 
 export function ThreatScene({ snapshot, direction, ttcSeconds }: ThreatSceneProps) {
+  const primaryVehicleId = snapshot.primaryThreatVehicleId;
+
   return (
     <div className="mt-6 rounded-2xl border border-cyan-400/20 bg-gradient-to-br from-slate-950 via-slate-950 to-cyan-950/40 p-5">
       <p className="text-xs uppercase tracking-[0.25em] text-cyan-300">Live simulation area</p>
@@ -65,17 +67,18 @@ export function ThreatScene({ snapshot, direction, ttcSeconds }: ThreatSceneProp
                 />
               ))}
 
-            {snapshot.threatVector ? (
+            {snapshot.threatVectors.map((vector, index) => (
               <line
-                x1={snapshot.threatVector.from.x}
-                y1={snapshot.threatVector.from.y}
-                x2={snapshot.threatVector.to.x}
-                y2={snapshot.threatVector.to.y}
+                key={`vector-${index}`}
+                x1={vector.from.x}
+                y1={vector.from.y}
+                x2={vector.to.x}
+                y2={vector.to.y}
                 stroke="rgba(248,113,113,0.75)"
                 strokeWidth="0.8"
                 strokeDasharray="2 2"
               />
-            ) : null}
+            ))}
           </svg>
 
           <div
@@ -102,7 +105,11 @@ export function ThreatScene({ snapshot, direction, ttcSeconds }: ThreatSceneProp
             return (
               <div
                 key={actor.id}
-                className="simulation-vehicle absolute h-8 w-14 -translate-x-1/2 -translate-y-1/2 rounded-md border border-orange-200/90 bg-orange-400/30 shadow-[0_0_20px_rgba(251,146,60,0.35)] transition-all duration-300"
+                className={`simulation-vehicle absolute h-8 w-14 -translate-x-1/2 -translate-y-1/2 rounded-md border transition-all duration-300 ${
+                  actor.id === primaryVehicleId
+                    ? "border-red-200/90 bg-red-400/35 shadow-[0_0_26px_rgba(248,113,113,0.45)]"
+                    : "border-orange-200/90 bg-orange-400/30 shadow-[0_0_20px_rgba(251,146,60,0.35)]"
+                }`}
                 style={{
                   left: `${actor.position.x}%`,
                   top: `${actor.position.y}%`,
