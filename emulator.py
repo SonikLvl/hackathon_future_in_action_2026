@@ -5,15 +5,20 @@ import json
 
 API_URL = "http://127.0.0.1:8000/api/telemetry"
 WS_URL = "ws://127.0.0.1:8000/ws/pedestrian_1"
+FINAL_ALERT_GRACE_SECONDS = 3
 
-async def listen_to_alerts():
+async def listen_to_alerts(stop_event: asyncio.Event):
     """Фонова задача: імітує смарт-браслет пішохода, який чекає на пуш-сповіщення"""
     try:
         async with websockets.connect(WS_URL) as ws:
             print("🎧 [ПІШОХІД] Браслет підключено. Слухаємо ефір...")
-            while True:
-                msg = await ws.recv()
-                print(f"\n[ВІБРАЦІЯ БРАСЛЕТА]: {msg}\n")
+            while not stop_event.is_set():
+                try:
+                    msg = await asyncio.wait_for(ws.recv(), timeout=0.5)
+                    print(f"\n[ВІБРАЦІЯ БРАСЛЕТА]: {msg}\n")
+                except TimeoutError:
+                    # Перевіряємо stop_event кожні 0.5 секунди
+                    continue
     except Exception as e:
         print(f"[ПІШОХІД] З'єднання втрачено: {e}")
 
@@ -64,11 +69,21 @@ async def simulate_movement():
         print("🏁 Симуляція завершена.")
 
 async def main():
-    # Запускаємо слухача веб-сокетів та генератор телеметрії одночасно
-    await asyncio.gather(
-        listen_to_alerts(),
-        simulate_movement()
-    )
+    stop_event = asyncio.Event()
+    listener_task = asyncio.create_task(listen_to_alerts(stop_event))
+
+    try:
+        # Відправляємо весь сценарій телеметрії
+        await simulate_movement()
+
+        # Даємо час на доставку фінальних алертів з бекенду
+        print(f"⌛ Очікуємо фінальні алерти ще {FINAL_ALERT_GRACE_SECONDS}с...")
+        await asyncio.sleep(FINAL_ALERT_GRACE_SECONDS)
+    finally:
+        # Коректно завершуємо слухача вебсокета
+        stop_event.set()
+        await listener_task
+        print("✅ Емулятор завершив роботу.")
 
 if __name__ == "__main__":
     asyncio.run(main())
