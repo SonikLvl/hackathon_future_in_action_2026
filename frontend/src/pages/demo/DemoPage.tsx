@@ -89,7 +89,6 @@ export function DemoPage() {
   const { devices: telemetryDevices } = useTelemetrySnapshot();
   const activeAlert = latestAlert;
   const feedItems = alertHistory.slice(0, 8);
-  const sceneDirection = activeAlert?.direction ?? "unknown";
   const simulationSnapshot = useSimulationEngine({ activeAlert, telemetryDevices });
   const [scenarioPhase, setScenarioPhase] = useState<DemoScenarioPhase>("waiting");
   const [lastMovementAt, setLastMovementAt] = useState<number | null>(null);
@@ -230,7 +229,6 @@ export function DemoPage() {
 
             <ThreatScene
               snapshot={simulationSnapshot}
-              direction={sceneDirection}
               ttcSeconds={activeAlert?.timeToConflictSeconds ?? null}
             />
           </div>

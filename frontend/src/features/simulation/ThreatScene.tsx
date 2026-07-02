@@ -1,4 +1,4 @@
-import type { AlertDirection, AlertSeverity } from "@/features/bracelet/types";
+import type { AlertSeverity } from "@/features/bracelet/types";
 import type { SimulationSnapshot } from "@/features/simulation/types";
 
 const severitySceneGlowClassName: Record<AlertSeverity, string> = {
@@ -6,14 +6,6 @@ const severitySceneGlowClassName: Record<AlertSeverity, string> = {
   caution: "from-yellow-500/15 via-cyan-500/10 to-slate-950",
   warning: "from-orange-500/20 via-cyan-500/10 to-slate-950",
   critical: "from-red-500/25 via-orange-500/15 to-slate-950",
-};
-
-const directionLabel: Record<AlertDirection, string> = {
-  front: "Front",
-  back: "Behind",
-  left: "Left",
-  right: "Right",
-  unknown: "Nearby",
 };
 
 function formatMetric(value: number | null, suffix = ""): string {
@@ -25,11 +17,29 @@ function formatMetric(value: number | null, suffix = ""): string {
 
 type ThreatSceneProps = {
   snapshot: SimulationSnapshot;
-  direction: AlertDirection;
   ttcSeconds: number | null;
 };
 
-export function ThreatScene({ snapshot, direction, ttcSeconds }: ThreatSceneProps) {
+function getLiveDirectionLabel(snapshot: SimulationSnapshot): string {
+  const pedestrian = snapshot.actors.find((actor) => actor.kind === "pedestrian");
+  const primaryVehicle = snapshot.actors.find(
+    (actor) => actor.kind === "vehicle" && actor.id === snapshot.primaryThreatVehicleId,
+  );
+
+  if (!pedestrian || !primaryVehicle) {
+    return "Nearby";
+  }
+
+  const dx = primaryVehicle.position.x - pedestrian.position.x;
+  const dy = primaryVehicle.position.y - pedestrian.position.y;
+
+  if (Math.abs(dx) > Math.abs(dy)) {
+    return dx > 0 ? "Right" : "Left";
+  }
+  return dy > 0 ? "Behind" : "Front";
+}
+
+export function ThreatScene({ snapshot, ttcSeconds }: ThreatSceneProps) {
   const primaryVehicleId = snapshot.primaryThreatVehicleId;
   const MAX_VISIBLE_SECONDARY_VEHICLES = 2;
   const primaryVehicle =
@@ -51,6 +61,7 @@ export function ThreatScene({ snapshot, direction, ttcSeconds }: ThreatSceneProp
     })
     .slice(0, MAX_VISIBLE_SECONDARY_VEHICLES);
   const hiddenOtherVehiclesCount = Math.max(0, allOtherVehicles.length - visibleOtherVehicles.length);
+  const liveDirectionLabel = getLiveDirectionLabel(snapshot);
 
   return (
     <div className="mt-6 rounded-2xl border border-cyan-400/20 bg-gradient-to-br from-slate-950 via-slate-950 to-cyan-950/40 p-5">
@@ -176,7 +187,7 @@ export function ThreatScene({ snapshot, direction, ttcSeconds }: ThreatSceneProp
           ))}
 
           <div className="absolute left-4 top-4 rounded-full border border-cyan-300/30 bg-slate-900/80 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-200">
-            Approach {directionLabel[direction]}
+            Approach {liveDirectionLabel}
           </div>
           <div className="absolute right-4 top-4 rounded-full border border-white/20 bg-slate-900/80 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-200">
             TTC {formatMetric(ttcSeconds, "s")}
