@@ -111,14 +111,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
     try:
         while True:
             await websocket.receive_text()
-<<<<<<< HEAD
     except WebSocketDisconnect:
+        pass
+    finally:
         manager.disconnect(client_id, websocket)
-=======
-    except Exception:
-        manager.disconnect(client_id)
-
-
-
-
->>>>>>> origin/main
