@@ -1,5 +1,6 @@
 import type { AlertDirection, AlertSeverity, BraceletConnectionStatus } from "@/features/bracelet/types";
 import { useRiskAlertStream } from "@/features/realtime/useRiskAlertStream";
+import { useTelemetrySnapshot } from "@/features/realtime/useTelemetrySnapshot";
 import { ThreatScene } from "@/features/simulation/ThreatScene";
 import { useSimulationEngine } from "@/features/simulation/useSimulationEngine";
 
@@ -67,10 +68,11 @@ function formatLastSeen(timestamp: number | null): string {
 
 export function DemoPage() {
   const { status, latestAlert, alertHistory, lastMessageAt } = useRiskAlertStream();
+  const { devices: telemetryDevices } = useTelemetrySnapshot();
   const activeAlert = latestAlert;
   const feedItems = alertHistory.slice(0, 8);
   const sceneDirection = activeAlert?.direction ?? "unknown";
-  const simulationSnapshot = useSimulationEngine({ activeAlert });
+  const simulationSnapshot = useSimulationEngine({ activeAlert, telemetryDevices });
 
   return (
     <main className="min-h-screen bg-slate-950 px-6 py-8 text-slate-50 lg:px-8">

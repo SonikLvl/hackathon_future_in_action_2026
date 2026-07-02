@@ -13,7 +13,14 @@ from db import get_db, init_db
 from state import active_devices, state_lock
 from risk_engine import risk_engine_loop
 from connection_manager import manager
-from schemas import TelemetryInput, UserResponse, DeviceResponse, IncidentResponse
+from schemas import (
+    TelemetryInput,
+    UserResponse,
+    DeviceResponse,
+    IncidentResponse,
+    ActiveDevicesResponse,
+    ActiveDeviceState,
+)
 from seed import seed_test_data
 
 # ---------- Запуск і зупинка фонової задачі ----------
@@ -103,6 +110,27 @@ async def get_all_incidents(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Incident).order_by(Incident.timestamp.desc()))
     incidents = result.scalars().all()
     return incidents
+
+@app.get("/api/active-devices", response_model=ActiveDevicesResponse, tags=["Realtime"])
+async def get_active_devices():
+    """
+    Повертає актуальний in-memory стан пристроїв для live-візуалізації на демо-консолі.
+    """
+    async with state_lock:
+        devices = [
+            ActiveDeviceState(
+                device_id=device_id,
+                is_pedestrian=data["is_pedestrian"],
+                lat=data["lat"],
+                lon=data["lon"],
+                speed=data.get("speed", 0.0) or 0.0,
+                azimuth=data.get("azimuth"),
+                last_updated=data["last_updated"],
+            )
+            for device_id, data in active_devices.items()
+        ]
+
+    return ActiveDevicesResponse(devices=devices)
 
 
 @app.websocket("/ws/{client_id}")

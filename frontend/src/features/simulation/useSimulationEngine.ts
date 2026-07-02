@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { BraceletAlert } from "@/features/bracelet/types";
+import type { TelemetryDeviceSnapshot } from "@/features/realtime/useTelemetrySnapshot";
 import {
   estimateHeadingDeg,
   getImpactRadius,
@@ -16,6 +17,7 @@ const STALE_VEHICLE_TIMEOUT_MS = 7000;
 
 type UseSimulationEngineInput = {
   activeAlert: BraceletAlert | null;
+  telemetryDevices: TelemetryDeviceSnapshot[];
 };
 
 const PEDESTRIAN_ID = "pedestrian_1";
@@ -47,7 +49,7 @@ function lerp(current: number, target: number): number {
   return current + (target - current) * SMOOTHING;
 }
 
-export function useSimulationEngine({ activeAlert }: UseSimulationEngineInput) {
+export function useSimulationEngine({ activeAlert, telemetryDevices }: UseSimulationEngineInput) {
   const [actors, setActors] = useState<Record<string, SimulationActor>>({
     [PEDESTRIAN_ID]: createPedestrianActor(),
   });
@@ -55,6 +57,63 @@ export function useSimulationEngine({ activeAlert }: UseSimulationEngineInput) {
   const latestSpeedRef = useRef<number>(10);
   const trailTickRef = useRef<number>(0);
   const vehicleStateRef = useRef<Record<string, VehicleMotionState>>({});
+
+  useEffect(() => {
+    if (telemetryDevices.length === 0) {
+      return;
+    }
+
+    const center = getSceneCenter();
+    const latValues = telemetryDevices.map((device) => device.lat);
+    const lonValues = telemetryDevices.map((device) => device.lon);
+
+    const minLat = Math.min(...latValues);
+    const maxLat = Math.max(...latValues);
+    const minLon = Math.min(...lonValues);
+    const maxLon = Math.max(...lonValues);
+
+    const latRange = Math.max(maxLat - minLat, 0.00008);
+    const lonRange = Math.max(maxLon - minLon, 0.00008);
+
+    function toScenePosition(lat: number, lon: number) {
+      const xNorm = (lon - minLon) / lonRange;
+      const yNorm = (lat - minLat) / latRange;
+
+      return {
+        x: 18 + xNorm * 64,
+        y: 80 - yNorm * 56,
+      };
+    }
+
+    setActors((currentActors) => {
+      const nextActors: Record<string, SimulationActor> = {
+        [PEDESTRIAN_ID]: currentActors[PEDESTRIAN_ID] ?? createPedestrianActor(),
+      };
+
+      for (const device of telemetryDevices) {
+        const id = device.deviceId;
+        const existingActor = currentActors[id];
+        const position = toScenePosition(device.lat, device.lon);
+        const headingDeg =
+          typeof device.azimuth === "number"
+            ? device.azimuth
+            : estimateHeadingDeg(position, center);
+
+        nextActors[id] = {
+          id,
+          kind: device.isPedestrian ? "pedestrian" : "vehicle",
+          label: device.isPedestrian ? "Pedestrian" : "Vehicle",
+          position,
+          velocity: existingActor?.velocity ?? { x: 0, y: 0 },
+          headingDeg,
+          speedKmh: device.speed * 3.6,
+          trail: existingActor?.trail ?? [],
+        };
+      }
+
+      return nextActors;
+    });
+  }, [telemetryDevices]);
 
   useEffect(() => {
     if (!activeAlert) {
