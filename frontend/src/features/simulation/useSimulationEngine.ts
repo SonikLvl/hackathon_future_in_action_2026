@@ -81,6 +81,13 @@ export function useSimulationEngine({ activeAlert, telemetryDevices }: UseSimula
         lon: pedestrianDevice.lon,
       };
     }
+    if (pedestrianDevice && anchorRef.current) {
+      // Camera follows pedestrian to keep bracelet perspective stable.
+      anchorRef.current = {
+        lat: pedestrianDevice.lat,
+        lon: pedestrianDevice.lon,
+      };
+    }
 
     function toScenePosition(lat: number, lon: number) {
       if (!anchorRef.current) {
@@ -103,7 +110,7 @@ export function useSimulationEngine({ activeAlert, telemetryDevices }: UseSimula
       for (const device of telemetryDevices) {
         const id = device.deviceId;
         const existingActor = currentActors[id];
-        const position = toScenePosition(device.lat, device.lon);
+        const position = device.isPedestrian && id === PEDESTRIAN_ID ? center : toScenePosition(device.lat, device.lon);
         const headingDeg =
           typeof device.azimuth === "number"
             ? device.azimuth

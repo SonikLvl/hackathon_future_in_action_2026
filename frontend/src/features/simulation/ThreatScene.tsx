@@ -42,21 +42,17 @@ function getLiveDirectionLabel(snapshot: SimulationSnapshot): string {
 export function ThreatScene({ snapshot, ttcSeconds }: ThreatSceneProps) {
   const primaryVehicleId = snapshot.primaryThreatVehicleId;
   const MAX_VISIBLE_SECONDARY_VEHICLES = 2;
+  const pedestrian = snapshot.actors.find((actor) => actor.kind === "pedestrian") ?? null;
   const primaryVehicle =
     snapshot.actors.find((actor) => actor.kind === "vehicle" && actor.id === primaryVehicleId) ?? null;
   const allOtherVehicles = snapshot.actors.filter(
     (actor) => actor.kind === "vehicle" && actor.id !== primaryVehicleId,
   );
+  const focusPoint = pedestrian?.position ?? snapshot.conflictPoint;
   const visibleOtherVehicles = [...allOtherVehicles]
     .sort((a, b) => {
-      const distA = Math.hypot(
-        a.position.x - snapshot.conflictPoint.x,
-        a.position.y - snapshot.conflictPoint.y,
-      );
-      const distB = Math.hypot(
-        b.position.x - snapshot.conflictPoint.x,
-        b.position.y - snapshot.conflictPoint.y,
-      );
+      const distA = Math.hypot(a.position.x - focusPoint.x, a.position.y - focusPoint.y);
+      const distB = Math.hypot(b.position.x - focusPoint.x, b.position.y - focusPoint.y);
       return distA - distB;
     })
     .slice(0, MAX_VISIBLE_SECONDARY_VEHICLES);
@@ -106,8 +102,8 @@ export function ThreatScene({ snapshot, ttcSeconds }: ThreatSceneProps) {
               <line
                 x1={primaryVehicle.position.x}
                 y1={primaryVehicle.position.y}
-                x2={snapshot.conflictPoint.x}
-                y2={snapshot.conflictPoint.y}
+                x2={focusPoint.x}
+                y2={focusPoint.y}
                 stroke="rgba(248,113,113,0.75)"
                 strokeWidth="1.2"
                 strokeDasharray="3 2"
@@ -118,8 +114,8 @@ export function ThreatScene({ snapshot, ttcSeconds }: ThreatSceneProps) {
           <div
             className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-red-300/60 bg-red-400/10"
             style={{
-              left: `${snapshot.conflictPoint.x}%`,
-              top: `${snapshot.conflictPoint.y}%`,
+              left: `${focusPoint.x}%`,
+              top: `${focusPoint.y}%`,
               width: `${snapshot.impactRadius * 1.25}px`,
               height: `${snapshot.impactRadius * 1.25}px`,
             }}
@@ -127,8 +123,8 @@ export function ThreatScene({ snapshot, ttcSeconds }: ThreatSceneProps) {
           <div
             className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-red-200/80 bg-red-300/20"
             style={{
-              left: `${snapshot.conflictPoint.x}%`,
-              top: `${snapshot.conflictPoint.y}%`,
+              left: `${focusPoint.x}%`,
+              top: `${focusPoint.y}%`,
               width: "10px",
               height: "10px",
             }}
@@ -194,7 +190,7 @@ export function ThreatScene({ snapshot, ttcSeconds }: ThreatSceneProps) {
           </div>
 
           <p className="absolute bottom-3 left-3 text-[10px] uppercase tracking-[0.2em] text-slate-300">
-            Legend: green=pedestrian, red=primary threat, orange=other vehicles
+            Legend: green=pedestrian, red=primary threat, center ring=pedestrian safety zone
           </p>
           <div className="absolute bottom-3 right-3 rounded-full border border-white/20 bg-slate-900/85 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-200">
             Other traffic: {visibleOtherVehicles.length}
