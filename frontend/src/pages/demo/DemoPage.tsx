@@ -228,7 +228,7 @@ export function DemoPage() {
                 `/ws/pedestrian_1`.
               </p>
             </div>
-          </div>
+          </aside>
         </section>
       </section>
     </main>
