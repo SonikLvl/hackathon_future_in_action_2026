@@ -1,4 +1,4 @@
-import type { AlertDirection, AlertSeverity, BraceletAlert } from "@/features/bracelet/types";
+import type { AlertDirection, AlertSeverity, BraceletAlert, RiskAlertEvent } from "@/features/bracelet/types";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -7,11 +7,11 @@ function isRecord(value: unknown): value is UnknownRecord {
 }
 
 function parseSeverity(value: unknown): AlertSeverity {
-  if (value === "safe" || value === "warning" || value === "high" || value === "critical") {
+  if (value === "safe" || value === "caution" || value === "warning" || value === "critical") {
     return value;
   }
 
-  return "high";
+  return "warning";
 }
 
 function parseDirection(value: unknown): AlertDirection {
@@ -33,7 +33,43 @@ function parseVibrationPattern(value: unknown): number[] {
     return value;
   }
 
-  return [200, 100, 200];
+  return [140, 90, 140];
+}
+
+function parseNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function parseOptionalString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function parseRiskAlertEvent(payload: UnknownRecord): RiskAlertEvent | null {
+  if (payload.type !== "risk_alert" || payload.version !== 1) {
+    return null;
+  }
+
+  if (typeof payload.message !== "string" || typeof payload.deviceId !== "string") {
+    return null;
+  }
+
+  return {
+    type: "risk_alert",
+    version: 1,
+    timestamp: typeof payload.timestamp === "string" ? payload.timestamp : new Date().toISOString(),
+    deviceId: payload.deviceId,
+    vehicleId: typeof payload.vehicleId === "string" ? payload.vehicleId : "unknown",
+    severity: parseSeverity(payload.severity),
+    riskScore: parseNumber(payload.riskScore) ?? 0,
+    message: payload.message,
+    direction: parseDirection(payload.direction),
+    distanceMeters: parseNumber(payload.distanceMeters) ?? 0,
+    timeToConflictSeconds: parseNumber(payload.timeToConflictSeconds),
+    vehicleType: parseOptionalString(payload.vehicleType),
+    speedKmh: parseNumber(payload.speedKmh) ?? 0,
+    reason: typeof payload.reason === "string" ? payload.reason : "Vehicle risk detected nearby.",
+    vibrationPattern: parseVibrationPattern(payload.vibrationPattern),
+  };
 }
 
 function guessDirectionFromText(message: string): AlertDirection {
@@ -63,8 +99,24 @@ export function parseBraceletMessage(rawMessage: string): BraceletAlert {
     const parsed: unknown = JSON.parse(rawMessage);
 
     if (isRecord(parsed)) {
-      const message =
-        typeof parsed.message === "string" ? parsed.message : "Danger nearby. Look around.";
+      const structuredEvent = parseRiskAlertEvent(parsed);
+      if (structuredEvent) {
+        return {
+          severity: structuredEvent.severity,
+          direction: structuredEvent.direction,
+          message: structuredEvent.message,
+          vibrationPattern: structuredEvent.vibrationPattern,
+          receivedAt: Date.now(),
+          riskScore: structuredEvent.riskScore,
+          distanceMeters: structuredEvent.distanceMeters,
+          timeToConflictSeconds: structuredEvent.timeToConflictSeconds,
+          vehicleId: structuredEvent.vehicleId,
+          vehicleType: structuredEvent.vehicleType,
+          reason: structuredEvent.reason,
+        };
+      }
+
+      const message = typeof parsed.message === "string" ? parsed.message : "Danger nearby. Look around.";
 
       return {
         severity: parseSeverity(parsed.severity),
@@ -72,6 +124,12 @@ export function parseBraceletMessage(rawMessage: string): BraceletAlert {
         message,
         vibrationPattern: parseVibrationPattern(parsed.vibrationPattern),
         receivedAt: Date.now(),
+        riskScore: parseNumber(parsed.riskScore),
+        distanceMeters: parseNumber(parsed.distanceMeters),
+        timeToConflictSeconds: parseNumber(parsed.timeToConflictSeconds),
+        vehicleId: parseOptionalString(parsed.vehicleId),
+        vehicleType: parseOptionalString(parsed.vehicleType),
+        reason: parseOptionalString(parsed.reason),
       };
     }
   } catch {
@@ -79,10 +137,16 @@ export function parseBraceletMessage(rawMessage: string): BraceletAlert {
   }
 
   return {
-    severity: "high",
+    severity: "warning",
     direction: guessDirectionFromText(rawMessage),
     message: rawMessage,
-    vibrationPattern: [200, 100, 200],
+    vibrationPattern: [140, 90, 140],
     receivedAt: Date.now(),
+    riskScore: null,
+    distanceMeters: null,
+    timeToConflictSeconds: null,
+    vehicleId: null,
+    vehicleType: null,
+    reason: null,
   };
 }

@@ -2,10 +2,12 @@ import asyncio
 import time
 import math
 import uuid
+from datetime import datetime, UTC
 from state import active_devices, state_lock
 from connection_manager import manager 
 from db import AsyncSessionLocal
 from models import Incident
+from schemas import AlertDirection, AlertSeverity, RiskAlertEvent
 
 EARTH_RADIUS = 6371000 # метри
 
@@ -47,6 +49,68 @@ def get_direction_string(bearing: float) -> str:
     if 135 <= bearing < 225: return "ззаду"
     if 225 <= bearing < 315: return "зліва"
     return "спереду"
+
+
+def get_direction_code(bearing: float) -> AlertDirection:
+    """Перетворює кут у стандартизовану англомовну мітку напрямку."""
+    if 45 <= bearing < 135:
+        return "right"
+    if 135 <= bearing < 225:
+        return "back"
+    if 225 <= bearing < 315:
+        return "left"
+    return "front"
+
+
+def estimate_time_to_conflict(distance_m: float, vehicle_speed_mps: float, pedestrian_speed_mps: float) -> float | None:
+    """
+    Оцінка часу до потенційного конфлікту.
+    Для MVP використовуємо спрощену модель "назустріч / зближення",
+    яка дає стабільний, пояснюваний індикатор для демо.
+    """
+    closing_speed = max(vehicle_speed_mps - pedestrian_speed_mps, 0.1)
+    if closing_speed <= 0:
+        return None
+    return round(distance_m / closing_speed, 1)
+
+
+def classify_risk(distance_m: float, vehicle_speed_mps: float, ttc_s: float | None) -> tuple[AlertSeverity, int]:
+    """
+    Повертає (severity, risk_score).
+    Severity шкала: safe -> caution -> warning -> critical.
+    """
+    speed_kmh = vehicle_speed_mps * 3.6
+
+    if distance_m <= 8 or (ttc_s is not None and ttc_s <= 1.5):
+        return "critical", 92 if speed_kmh >= 20 else 88
+    if distance_m <= 14 or (ttc_s is not None and ttc_s <= 3.0):
+        return "warning", 78 if speed_kmh >= 15 else 72
+    if distance_m <= 22 or (ttc_s is not None and ttc_s <= 5.0):
+        return "caution", 62 if speed_kmh >= 10 else 56
+    return "safe", 18
+
+
+def infer_vehicle_type(vehicle_id: str) -> str:
+    normalized = vehicle_id.lower()
+    if "car" in normalized:
+        return "car"
+    if "motor" in normalized:
+        return "motorcycle"
+    if "bike" in normalized:
+        return "bicycle"
+    if "scooter" in normalized:
+        return "scooter"
+    return "unknown"
+
+
+def get_vibration_pattern(severity: AlertSeverity) -> list[int]:
+    if severity == "critical":
+        return [180, 70, 180, 70, 180]
+    if severity == "warning":
+        return [140, 90, 140]
+    if severity == "caution":
+        return [100, 100, 100]
+    return []
 
 
 async def save_incident_to_db(pedestrian_id: str, vehicle_id: str, lat: float, lon: float, distance: float):
@@ -93,11 +157,11 @@ async def risk_engine_loop():
                 for v_id, v_data in vehicles.items():
                     dist = calculate_distance(p_data["lat"], p_data["lon"], v_data["lat"], v_data["lon"])
                     
-                    # Проста евристика: якщо ТЗ ближче ніж 20 метрів і має швидкість > 2 м/с (7 км/год)
-                    # (У повноцінній версії тут буде розрахунок перетину векторів на основі azimuth)
+                    # Базовий тригер: якщо ТЗ ближче ніж 22 метри і має швидкість > 2 м/с (7 км/год)
                     v_speed = v_data.get("speed", 0)
+                    p_speed = p_data.get("speed", 0)
                     
-                    if dist < 20.0 and v_speed > 2.0:
+                    if dist < 22.0 and v_speed > 2.0:
                         alert_key = f"{p_id}_{v_id}"
                         
                         # Перевірка Cooldown (не частіше ніж раз на 5 секунд для цієї пари)
@@ -106,12 +170,43 @@ async def risk_engine_loop():
                             # Визначаємо напрямок
                             bearing = calculate_bearing(p_data["lat"], p_data["lon"], v_data["lat"], v_data["lon"])
                             direction_str = get_direction_string(bearing)
+                            direction_code = get_direction_code(bearing)
+                            ttc_s = estimate_time_to_conflict(dist, v_speed, p_speed)
+                            severity, risk_score = classify_risk(dist, v_speed, ttc_s)
+                            speed_kmh = round(v_speed * 3.6, 1)
+                            vehicle_type = infer_vehicle_type(v_id)
+                            
+                            if severity == "safe":
+                                continue
                             
                             alert_msg = f"УВАГА! Транспорт наближається {direction_str} ({round(dist)} м)"
                             print(f"[{time.strftime('%X')}] {alert_msg} (ТЗ: {v_id})")
+
+                            ttc_text = f"{ttc_s}с" if ttc_s is not None else "невідомо"
+                            reason = (
+                                f"Vehicle approaching from {direction_code}; "
+                                f"distance {round(dist, 1)}m; "
+                                f"speed {speed_kmh} km/h; "
+                                f"estimated conflict in {ttc_text}."
+                            )
+                            event = RiskAlertEvent(
+                                timestamp=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                                deviceId=p_id,
+                                vehicleId=v_id,
+                                severity=severity,
+                                riskScore=risk_score,
+                                message=alert_msg,
+                                direction=direction_code,
+                                distanceMeters=round(dist, 1),
+                                timeToConflictSeconds=ttc_s,
+                                vehicleType=vehicle_type,
+                                speedKmh=speed_kmh,
+                                reason=reason,
+                                vibrationPattern=get_vibration_pattern(severity),
+                            )
                             
                             # 1. Відправляємо пуш через WebSockets
-                            await manager.send_personal_message(alert_msg, p_id)
+                            await manager.send_personal_message(event.model_dump_json(), p_id)
                             
                             # 2. ФОНОВИЙ ЗАПИС У БАЗУ ДАНИХ
                             # Запускаємо як окрему таску, щоб не чекати завершення INSERT-запиту
