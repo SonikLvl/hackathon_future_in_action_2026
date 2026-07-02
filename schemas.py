@@ -37,6 +37,18 @@ class IncidentResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class ActiveDeviceState(BaseModel):
+    device_id: str
+    is_pedestrian: bool
+    lat: float
+    lon: float
+    speed: float = 0.0
+    azimuth: Optional[float] = None
+    last_updated: float
+
+class ActiveDevicesResponse(BaseModel):
+    devices: list[ActiveDeviceState]
+
 
 AlertSeverity = Literal["safe", "caution", "warning", "critical"]
 AlertDirection = Literal["front", "back", "left", "right", "unknown"]

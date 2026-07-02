@@ -1,5 +1,10 @@
+import { useEffect, useState } from "react";
+
 import type { AlertDirection, AlertSeverity, BraceletConnectionStatus } from "@/features/bracelet/types";
 import { useRiskAlertStream } from "@/features/realtime/useRiskAlertStream";
+import { useTelemetrySnapshot } from "@/features/realtime/useTelemetrySnapshot";
+import { ThreatScene } from "@/features/simulation/ThreatScene";
+import { useSimulationEngine } from "@/features/simulation/useSimulationEngine";
 
 const connectionLabel: Record<BraceletConnectionStatus, string> = {
   connecting: "Connecting",
@@ -13,6 +18,22 @@ const connectionClassName: Record<BraceletConnectionStatus, string> = {
   connected: "border-emerald-500/40 bg-emerald-950/60 text-emerald-100",
   reconnecting: "border-amber-500/40 bg-amber-950/60 text-amber-100",
   disconnected: "border-slate-600 bg-slate-900 text-slate-200",
+};
+
+type DemoScenarioPhase = "waiting" | "running" | "stabilizing" | "finished";
+
+const phaseLabel: Record<DemoScenarioPhase, string> = {
+  waiting: "Scenario waiting",
+  running: "Scenario running",
+  stabilizing: "Stabilizing",
+  finished: "Scenario finished",
+};
+
+const phaseClassName: Record<DemoScenarioPhase, string> = {
+  waiting: "border-slate-600 bg-slate-900 text-slate-200",
+  running: "border-cyan-500/40 bg-cyan-950/60 text-cyan-100",
+  stabilizing: "border-amber-500/40 bg-amber-950/60 text-amber-100",
+  finished: "border-emerald-500/40 bg-emerald-950/60 text-emerald-100",
 };
 
 const severityBadgeClassName: Record<AlertSeverity, string> = {
@@ -65,8 +86,42 @@ function formatLastSeen(timestamp: number | null): string {
 
 export function DemoPage() {
   const { status, latestAlert, alertHistory, lastMessageAt } = useRiskAlertStream();
+  const { devices: telemetryDevices } = useTelemetrySnapshot();
   const activeAlert = latestAlert;
   const feedItems = alertHistory.slice(0, 8);
+  const simulationSnapshot = useSimulationEngine({ activeAlert, telemetryDevices });
+  const [scenarioPhase, setScenarioPhase] = useState<DemoScenarioPhase>("waiting");
+  const [lastMovementAt, setLastMovementAt] = useState<number | null>(null);
+
+  useEffect(() => {
+    const now = Date.now();
+    const vehicleDevices = telemetryDevices.filter((device) => !device.isPedestrian);
+    const hasMovingVehicle = vehicleDevices.some((device) => device.speed > 0.2);
+
+    if (vehicleDevices.length === 0) {
+      setScenarioPhase("waiting");
+      return;
+    }
+
+    if (hasMovingVehicle) {
+      setLastMovementAt(now);
+      setScenarioPhase("running");
+      return;
+    }
+
+    if (lastMovementAt === null) {
+      setScenarioPhase("finished");
+      return;
+    }
+
+    const idleMs = now - lastMovementAt;
+    if (idleMs < 3500) {
+      setScenarioPhase("stabilizing");
+      return;
+    }
+
+    setScenarioPhase("finished");
+  }, [lastMovementAt, telemetryDevices]);
 
   return (
     <main className="min-h-screen bg-slate-950 px-6 py-8 text-slate-50 lg:px-8">
@@ -98,6 +153,11 @@ export function DemoPage() {
             <p>
               Feed size: <span className="font-semibold text-slate-100">{feedItems.length}</span>
             </p>
+            <div
+              className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] ${phaseClassName[scenarioPhase]}`}
+            >
+              {phaseLabel[scenarioPhase]}
+            </div>
           </div>
         </header>
 
@@ -121,6 +181,11 @@ export function DemoPage() {
                 {activeAlert ? severityLabel[activeAlert.severity] : "Idle"}
               </div>
             </div>
+
+            <p className="mt-2 text-xs uppercase tracking-[0.14em] text-slate-400">
+              Severity reflects the current primary threat vehicle:{" "}
+              <span className="font-semibold text-slate-200">{activeAlert?.vehicleId ?? "n/a"}</span>
+            </p>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div className="rounded-2xl border border-white/10 bg-slate-950/80 p-4">
@@ -162,21 +227,10 @@ export function DemoPage() {
               </div>
             </div>
 
-            <div className="mt-6 rounded-2xl border border-cyan-400/20 bg-gradient-to-br from-slate-950 via-slate-950 to-cyan-950/40 p-5">
-              <p className="text-xs uppercase tracking-[0.25em] text-cyan-300">Live simulation area</p>
-              <div className="mt-4 rounded-2xl border border-cyan-900/60 bg-slate-950 p-4">
-                <div className="relative h-56 overflow-hidden rounded-xl border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.15),_rgba(2,6,23,0.95))]">
-                  <div className="absolute inset-x-8 top-8 h-3 rounded-full bg-slate-700/80" />
-                  <div className="absolute inset-x-8 top-20 h-3 rounded-full bg-slate-700/80" />
-                  <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 border-l border-dashed border-cyan-400/50" />
-                  <div className="absolute bottom-8 left-1/2 h-12 w-12 -translate-x-1/2 rounded-full border-2 border-emerald-300/80 bg-emerald-400/20" />
-                  <div className="absolute left-1/2 top-9 h-10 w-16 -translate-x-1/2 rounded-lg border border-orange-300/80 bg-orange-400/20" />
-                  <p className="absolute bottom-3 left-3 text-[10px] uppercase tracking-[0.2em] text-slate-300">
-                    Placeholder for animated map and trajectory vectors
-                  </p>
-                </div>
-              </div>
-            </div>
+            <ThreatScene
+              snapshot={simulationSnapshot}
+              ttcSeconds={activeAlert?.timeToConflictSeconds ?? null}
+            />
           </div>
 
           <aside className="rounded-3xl border border-white/10 bg-slate-900/60 p-6 shadow-2xl shadow-black/30">

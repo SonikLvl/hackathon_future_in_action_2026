@@ -14,6 +14,8 @@ EARTH_RADIUS = 6371000 # метри
 # Словник для зберігання часу останнього сповіщення (Cooldown)
 # Формат: {"pedestrian_id_vehicle_id": timestamp}
 last_alerts: dict[str, float] = {}
+# Словник для відстеження динаміки дистанції по парі (щоб не алертити, коли ТЗ вже віддаляється)
+last_pair_distances: dict[str, float] = {}
 
 def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Обчислює відстань у метрах між двома координатами"""
@@ -147,6 +149,15 @@ async def risk_engine_loop():
             ]
             for key in stale_keys:
                 del active_devices[key]
+            if stale_keys:
+                stale_set = set(stale_keys)
+                for pair_key in list(last_pair_distances.keys()):
+                    if any(
+                        pair_key.startswith(f"{device_id}_") or pair_key.endswith(f"_{device_id}")
+                        for device_id in stale_set
+                    ):
+                        last_pair_distances.pop(pair_key, None)
+                        last_alerts.pop(pair_key, None)
 
             # 2. Розділення об'єктів
             pedestrians = {k: v for k, v in active_devices.items() if v["is_pedestrian"]}
@@ -156,13 +167,16 @@ async def risk_engine_loop():
             for p_id, p_data in pedestrians.items():
                 for v_id, v_data in vehicles.items():
                     dist = calculate_distance(p_data["lat"], p_data["lon"], v_data["lat"], v_data["lon"])
+                    pair_key = f"{p_id}_{v_id}"
+                    previous_dist = last_pair_distances.get(pair_key)
+                    is_closing = previous_dist is None or dist <= (previous_dist - 0.4)
                     
                     # Базовий тригер: якщо ТЗ ближче ніж 22 метри і має швидкість > 2 м/с (7 км/год)
                     v_speed = v_data.get("speed", 0)
                     p_speed = p_data.get("speed", 0)
                     
-                    if dist < 22.0 and v_speed > 2.0:
-                        alert_key = f"{p_id}_{v_id}"
+                    if dist < 22.0 and v_speed > 2.0 and is_closing:
+                        alert_key = pair_key
                         
                         # Перевірка Cooldown (не частіше ніж раз на 5 секунд для цієї пари)
                         last_alert_time = last_alerts.get(alert_key, 0)
@@ -222,8 +236,9 @@ async def risk_engine_loop():
                             
                             # Оновлюємо час останнього сповіщення
                             last_alerts[alert_key] = current_time
-                        
-                        
+
+                    # Оновлюємо останню дистанцію пари для наступного циклу
+                    last_pair_distances[pair_key] = dist
         
         # Затримка між циклами
         await asyncio.sleep(0.5)
