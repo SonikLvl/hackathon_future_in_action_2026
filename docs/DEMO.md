@@ -32,21 +32,25 @@ The story arc: **calm → caution → warning → critical → cleared**, in ~10
 ## 3. Start everything (4 terminals)
 
 **Terminal 1 — database**
+
 ```bash
 docker compose up -d
 ```
 
 **Terminal 2 — backend** (from repo root)
+
 ```bash
 python3 -m venv venv
 source venv/bin/activate            # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
+
 Wait for “База даних успішно ініціалізована!” — startup also seeds `pedestrian_1` and
 `scooter_1` and launches the risk-engine loop.
 
 **Terminal 3 — frontend**
+
 ```bash
 cd frontend
 npm install
@@ -54,6 +58,7 @@ npm run dev                          # add -- --host 0.0.0.0 to open on a phone
 ```
 
 **Open the views:**
+
 - Console → `http://localhost:5173/demo`
 - Bracelet → `http://localhost:5173/bracelet` (open on a real phone via the host IP for
   the vibration effect; a second browser window works too)
@@ -61,6 +66,7 @@ npm run dev                          # add -- --host 0.0.0.0 to open on a phone
 Both headers should read **Live**.
 
 **Terminal 4 — run the scenario** (venv active, from repo root)
+
 ```bash
 python emulator.py                   # add --with-bike for a second, crossing vehicle
 ```
@@ -85,17 +91,17 @@ python emulator.py                   # add --with-bike for a second, crossing ve
 
 **Hook (10s).** "E-scooters are silent, fast, and everywhere. For a pedestrian —
 especially someone with low vision — the first warning is often the impact. VARTA gives
-them a warning *before* it."
+them a warning _before_ it."
 
-**Setup (10s).** *Point at the console.* "This is our safety console. Green is the
+**Setup (10s).** _Point at the console._ "This is our safety console. Green is the
 pedestrian, walking. This vehicle is a scooter streaming its GPS and speed to our
 backend ten times a cycle. Watch both the screen and the phone."
 
 **Run it (start the emulator).**
 
-- **Caution (~3.5s in).** "The scooter is ~24 m away and *closing*. VARTA raises a
+- **Caution (~3.5s in).** "The scooter is ~24 m away and _closing_. VARTA raises a
   **caution** — a gentle heads-up. Note the phone: yellow, a soft buzz, and it already
-  says the direction — *front*, relative to where the pedestrian is walking."
+  says the direction — _front_, relative to where the pedestrian is walking."
 - **Warning (~6.5s).** "Now ~14 m. It escalates to **warning** — instantly, we don't
   wait on a timer when danger is rising. The risk score climbs, the map highlights this
   vehicle as the primary threat."
@@ -112,8 +118,8 @@ to do."
 
 ## 6. Why it's technically credible (drop these in)
 
-- **It reasons, it doesn't just measure proximity.** Distance *and* time-to-conflict
-  *and* whether the vehicle is actually closing. A vehicle parked 3 m away stays silent.
+- **It reasons, it doesn't just measure proximity.** Distance _and_ time-to-conflict
+  _and_ whether the vehicle is actually closing. A vehicle parked 3 m away stays silent.
 - **Escalation-aware, fatigue-free.** Emits on entry and escalation, suppresses
   downgrades, clears itself. See [`RISK_ENGINE.md`](./RISK_ENGINE.md#6-emission-policy--say-something-only-when-it-matters).
 - **Two synchronized clients from one contract.** Console and bracelet consume the same
@@ -129,7 +135,7 @@ WebSocket, UI. We swap the hardware for an emulator so the scenario is reproduci
 stage; a real device would `POST` the identical payload.
 
 **"How do you avoid false alarms?"** Three gates: the vehicle must be moving (>1.5 m/s),
-it must be *closing* (with a jitter epsilon), and we suppress de-escalation so it never
+it must be _closing_ (with a jitter epsilon), and we suppress de-escalation so it never
 flickers. Non-threats simply produce nothing.
 
 **"Won't it spam the user?"** No — the emission policy yields ~one alert per severity
@@ -149,24 +155,24 @@ anonymized near-miss incidents (location + distance) are persisted.
 
 ## 8. Roadmap / production path
 
-| MVP today | Production next |
-|---|---|
-| In-memory dict + single process | Redis / streaming state, spatially-sharded pair evaluation |
-| Emulator generates telemetry | Real device SDK (phone app + vehicle tracker) posting the same contract |
-| Closing-speed TTC heuristic | Full trajectory-intersection prediction, map/lane context |
-| `create_all` on boot | Alembic migrations |
-| Near-miss rows in Postgres | City dashboard: near-miss heatmaps, hotspot analytics for planners |
-| Local-network demo | TLS, auth on telemetry + WebSocket, per-device tokens |
+| MVP today                       | Production next                                                         |
+| ------------------------------- | ----------------------------------------------------------------------- |
+| In-memory dict + single process | Redis / streaming state, spatially-sharded pair evaluation              |
+| Emulator generates telemetry    | Real device SDK (phone app + vehicle tracker) posting the same contract |
+| Closing-speed TTC heuristic     | Full trajectory-intersection prediction, map/lane context               |
+| `create_all` on boot            | Alembic migrations                                                      |
+| Near-miss rows in Postgres      | City dashboard: near-miss heatmaps, hotspot analytics for planners      |
+| Local-network demo              | TLS, auth on telemetry + WebSocket, per-device tokens                   |
 
 ---
 
 ## 9. Troubleshooting
 
-| Symptom | Fix |
-|---|---|
-| Console/bracelet stuck "Connecting" | Backend not up, or wrong `VITE_WS_URL`. Confirm `uvicorn` on :8000. |
-| Emulator: `ModuleNotFoundError: aiohttp` | venv not active / deps not installed. `source venv/bin/activate && pip install -r requirements.txt`. |
-| Nothing happens when emulator runs | Ensure the seed created `pedestrian_1`/`scooter_1` (check backend startup log); the bracelet client id must be `pedestrian_1`. |
-| Map jitters / actors twitch after finish | Fixed — emulator stops vehicles in a stabilization phase; re-pull latest and re-run. |
-| Phone doesn't vibrate | Browser vibration needs a real device + user gesture; the on-screen color/pattern still demonstrates it. |
-| Frontend build/lint fails on Node 20 | Use Node ≥ 22.12 (see `frontend/package.json` `engines`). |
+| Symptom                                  | Fix                                                                                                                            |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Console/bracelet stuck "Connecting"      | Backend not up, or wrong `VITE_WS_URL`. Confirm `uvicorn` on :8000.                                                            |
+| Emulator: `ModuleNotFoundError: aiohttp` | venv not active / deps not installed. `source venv/bin/activate && pip install -r requirements.txt`.                           |
+| Nothing happens when emulator runs       | Ensure the seed created `pedestrian_1`/`scooter_1` (check backend startup log); the bracelet client id must be `pedestrian_1`. |
+| Map jitters / actors twitch after finish | Fixed — emulator stops vehicles in a stabilization phase; re-pull latest and re-run.                                           |
+| Phone doesn't vibrate                    | Browser vibration needs a real device + user gesture; the on-screen color/pattern still demonstrates it.                       |
+| Frontend build/lint fails on Node 20     | Use Node ≥ 22.12 (see `frontend/package.json` `engines`).                                                                      |

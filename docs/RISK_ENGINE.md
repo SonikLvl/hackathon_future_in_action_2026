@@ -2,7 +2,7 @@
 
 The risk engine (`risk_engine.py`) is the product's brain. It turns a stream of raw
 positions into a small number of **meaningful, non-annoying, explainable** alerts. This
-document is the reference for how it decides *what* to say and *when* to say it.
+document is the reference for how it decides _what_ to say and _when_ to say it.
 
 Design goals, in priority order:
 
@@ -33,12 +33,12 @@ Runs every **0.5 s**. Each tick evaluates every pedestrian↔vehicle pair indepe
 Because a real relationship evolves over time, each pair keeps a small memory
 (`PairState`), keyed `"<pedestrian_id>__<vehicle_id>"`:
 
-| Field | Purpose |
-|---|---|
-| `last_distance` | Previous distance — used to detect **closing** vs. receding |
+| Field              | Purpose                                                                  |
+| ------------------ | ------------------------------------------------------------------------ |
+| `last_distance`    | Previous distance — used to detect **closing** vs. receding              |
 | `emitted_severity` | The **latched** severity for this episode (never downgraded until clear) |
-| `last_emit_time` | Cooldown anchor for same-severity refreshes |
-| `critical_logged` | Ensures a near-miss incident is written to DB **once** per episode |
+| `last_emit_time`   | Cooldown anchor for same-severity refreshes                              |
+| `critical_logged`  | Ensures a near-miss incident is written to DB **once** per episode       |
 
 When either device goes stale, its pair state is discarded so a new encounter starts clean.
 
@@ -64,11 +64,11 @@ For a pair, from the two latest frames:
 Severity is **distance-band–driven** (interpretable, stable), and **escalated by TTC**
 so a fast approach trips a higher level earlier than distance alone would.
 
-| Severity | Trigger (distance **or** TTC) |
-|---|---|
-| `critical` | `dist ≤ 7 m`  or  `TTC ≤ 1.5 s` |
-| `warning`  | `dist ≤ 14 m` or  `TTC ≤ 3.0 s` |
-| `caution`  | `dist ≤ 24 m` or  `TTC ≤ 5.0 s` |
+| Severity   | Trigger (distance **or** TTC)                                 |
+| ---------- | ------------------------------------------------------------- |
+| `critical` | `dist ≤ 7 m` or `TTC ≤ 1.5 s`                                 |
+| `warning`  | `dist ≤ 14 m` or `TTC ≤ 3.0 s`                                |
+| `caution`  | `dist ≤ 24 m` or `TTC ≤ 5.0 s`                                |
 | `safe`     | everything else, **or** not closing, **or** vehicle < 1.5 m/s |
 
 > Distance bands (not raw score) drive the label because they're easy to reason about,
@@ -78,7 +78,7 @@ so a fast approach trips a higher level earlier than distance alone would.
 
 ## 5. Risk score (the 0–100 gauge)
 
-Severity is the *decision*; the score is a smooth *gauge* for the UI. It's a weighted
+Severity is the _decision_; the score is a smooth _gauge_ for the UI. It's a weighted
 blend of three normalized components:
 
 ```
@@ -93,11 +93,11 @@ raw = 0.50·distance_score + 0.30·ttc_score + 0.20·speed_score
 agrees with the label:
 
 | Severity | Score band |
-|---|---|
-| safe | 0–40 |
-| caution | 45–64 |
-| warning | 65–84 |
-| critical | 85–100 |
+| -------- | ---------- |
+| safe     | 0–40       |
+| caution  | 45–64      |
+| warning  | 65–84      |
+| critical | 85–100     |
 
 This resolves a real tension: to make the demo watchable we slow the vehicles down, but
 slow vehicles would otherwise produce low raw scores. Anchoring the gauge to the
@@ -147,7 +147,7 @@ relative = (bearing_to_vehicle − pedestrian_heading) mod 360
 front: 315–45°   right: 45–135°   back: 135–225°   left: 225–315°
 ```
 
-So "front / back / left / right" mean *relative to where the pedestrian is facing* —
+So "front / back / left / right" mean _relative to where the pedestrian is facing_ —
 not compass directions. This fixed an earlier bug where a scooter approaching head-on
 was mislabeled as coming "from behind". If the pedestrian has no heading, we assume they
 face north. Emitted both as a code (`front`) and a localized string
@@ -170,13 +170,13 @@ The emulator drives: pedestrian walking north at **0.4 m/s**, scooter approachin
 ~**35 m** north at **3.0 m/s**, offset ~1.5 m so they pass side-by-side. Closing speed
 ≈ **3.4 m/s**.
 
-| Time | Distance | Severity | What the pedestrian gets |
-|---|---|---|---|
-| ~0.0 s | ~35 m | safe | (silence — nothing worth saying) |
-| ~3.5 s | ~24 m | **caution** | first buzz + "Транспорт спереду (24 м)" |
-| ~6.5 s | ~14 m | **warning** | stronger buzz, score climbs into 65–84 |
-| ~8.5 s | ~7 m  | **critical** | strongest buzz, incident logged once |
-| ~10.5 s | passing | → **clear** | `risk_clear`, console + bracelet return to idle |
+| Time    | Distance | Severity     | What the pedestrian gets                        |
+| ------- | -------- | ------------ | ----------------------------------------------- |
+| ~0.0 s  | ~35 m    | safe         | (silence — nothing worth saying)                |
+| ~3.5 s  | ~24 m    | **caution**  | first buzz + "Транспорт спереду (24 м)"         |
+| ~6.5 s  | ~14 m    | **warning**  | stronger buzz, score climbs into 65–84          |
+| ~8.5 s  | ~7 m     | **critical** | strongest buzz, incident logged once            |
+| ~10.5 s | passing  | → **clear**  | `risk_clear`, console + bracelet return to idle |
 
 Each phase lasts ~2–3 s — deliberately long enough to point at and narrate on stage.
 De-escalation as the scooter recedes never produces a downgrade alert; the single
@@ -188,17 +188,17 @@ De-escalation as the scooter recedes never produces a downgrade alert; the singl
 
 All knobs live at the top of `risk_engine.py`:
 
-| Constant | Value | Effect |
-|---|---|---|
-| `LOOP_INTERVAL_SECONDS` | 0.5 | Evaluation cadence |
-| `CAUTION/WARNING/CRITICAL_DISTANCE_M` | 24 / 14 / 7 | Severity distance bands |
-| `CAUTION/WARNING/CRITICAL_TTC_S` | 5 / 3 / 1.5 | TTC escalation thresholds |
-| `MIN_VEHICLE_SPEED_MPS` | 1.5 | Ignore parked/idling vehicles |
-| `CLOSING_EPSILON_M` | 0.3 | Jitter tolerance for closing detection |
-| `REFRESH_INTERVAL_SECONDS` | 2.5 | Same-severity re-emit cadence |
-| `DISTANCE/TTC/SPEED` score refs | 28 m / 8 s / 35 km/h | Gauge normalization |
-| `STALE_DEVICE_SECONDS` | 60 | Drop silent devices (and their pair state) |
+| Constant                              | Value                | Effect                                     |
+| ------------------------------------- | -------------------- | ------------------------------------------ |
+| `LOOP_INTERVAL_SECONDS`               | 0.5                  | Evaluation cadence                         |
+| `CAUTION/WARNING/CRITICAL_DISTANCE_M` | 24 / 14 / 7          | Severity distance bands                    |
+| `CAUTION/WARNING/CRITICAL_TTC_S`      | 5 / 3 / 1.5          | TTC escalation thresholds                  |
+| `MIN_VEHICLE_SPEED_MPS`               | 1.5                  | Ignore parked/idling vehicles              |
+| `CLOSING_EPSILON_M`                   | 0.3                  | Jitter tolerance for closing detection     |
+| `REFRESH_INTERVAL_SECONDS`            | 2.5                  | Same-severity re-emit cadence              |
+| `DISTANCE/TTC/SPEED` score refs       | 28 m / 8 s / 35 km/h | Gauge normalization                        |
+| `STALE_DEVICE_SECONDS`                | 60                   | Drop silent devices (and their pair state) |
 
 To make the escalation slower/faster for a room, change the emulator's speeds rather
-than these thresholds — the thresholds encode the *safety model*, the emulator controls
-the *pacing* (see [`DEMO.md`](./DEMO.md)).
+than these thresholds — the thresholds encode the _safety model_, the emulator controls
+the _pacing_ (see [`DEMO.md`](./DEMO.md)).
