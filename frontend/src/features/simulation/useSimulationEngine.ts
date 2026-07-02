@@ -12,8 +12,9 @@ import type { SimulationActor, SimulationSnapshot } from "@/features/simulation/
 
 const TRAIL_LIMIT = 14;
 const TRAIL_RECORD_INTERVAL_MS = 120;
-const SMOOTHING = 0.12;
+const BASE_SMOOTHING = 0.12;
 const STALE_VEHICLE_TIMEOUT_MS = 7000;
+const METERS_TO_SCENE = 0.85; // 1m -> 0.85 scene units
 
 type UseSimulationEngineInput = {
   activeAlert: BraceletAlert | null;
@@ -45,8 +46,10 @@ function createPedestrianActor(): SimulationActor {
   };
 }
 
-function lerp(current: number, target: number): number {
-  return current + (target - current) * SMOOTHING;
+function lerpAdaptive(current: number, target: number): number {
+  const delta = Math.abs(target - current);
+  const adaptive = Math.min(0.24, BASE_SMOOTHING + delta * 0.015);
+  return current + (target - current) * adaptive;
 }
 
 export function useSimulationEngine({ activeAlert, telemetryDevices }: UseSimulationEngineInput) {
@@ -57,6 +60,7 @@ export function useSimulationEngine({ activeAlert, telemetryDevices }: UseSimula
   const latestSpeedRef = useRef<number>(10);
   const trailTickRef = useRef<number>(0);
   const vehicleStateRef = useRef<Record<string, VehicleMotionState>>({});
+  const anchorRef = useRef<{ lat: number; lon: number } | null>(null);
 
   useEffect(() => {
     if (telemetryDevices.length === 0) {
@@ -64,25 +68,29 @@ export function useSimulationEngine({ activeAlert, telemetryDevices }: UseSimula
     }
 
     const center = getSceneCenter();
-    const latValues = telemetryDevices.map((device) => device.lat);
-    const lonValues = telemetryDevices.map((device) => device.lon);
+    const pedestrianDevice =
+      telemetryDevices.find((device) => device.isPedestrian && device.deviceId === PEDESTRIAN_ID) ??
+      telemetryDevices.find((device) => device.isPedestrian) ??
+      null;
 
-    const minLat = Math.min(...latValues);
-    const maxLat = Math.max(...latValues);
-    const minLon = Math.min(...lonValues);
-    const maxLon = Math.max(...lonValues);
-
-    const latRange = Math.max(maxLat - minLat, 0.00008);
-    const lonRange = Math.max(maxLon - minLon, 0.00008);
+    if (pedestrianDevice && anchorRef.current === null) {
+      anchorRef.current = {
+        lat: pedestrianDevice.lat,
+        lon: pedestrianDevice.lon,
+      };
+    }
 
     function toScenePosition(lat: number, lon: number) {
-      const xNorm = (lon - minLon) / lonRange;
-      const yNorm = (lat - minLat) / latRange;
+      if (!anchorRef.current) {
+        return center;
+      }
 
-      return {
-        x: 18 + xNorm * 64,
-        y: 80 - yNorm * 56,
-      };
+      const deltaLatMeters = (lat - anchorRef.current.lat) / 0.000009;
+      const deltaLonMeters = (lon - anchorRef.current.lon) / 0.000014;
+      const x = center.x + deltaLonMeters * METERS_TO_SCENE;
+      const y = center.y - deltaLatMeters * METERS_TO_SCENE;
+
+      return { x: Math.max(8, Math.min(92, x)), y: Math.max(10, Math.min(92, y)) };
     }
 
     setActors((currentActors) => {
@@ -197,8 +205,8 @@ export function useSimulationEngine({ activeAlert, telemetryDevices }: UseSimula
             return acc;
           }
 
-          const nextX = lerp(actor.position.x, vehicleState.target.x);
-          const nextY = lerp(actor.position.y, vehicleState.target.y);
+          const nextX = lerpAdaptive(actor.position.x, vehicleState.target.x);
+          const nextY = lerpAdaptive(actor.position.y, vehicleState.target.y);
           const velocity = {
             x: nextX - actor.position.x,
             y: nextY - actor.position.y,
