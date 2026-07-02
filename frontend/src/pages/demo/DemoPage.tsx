@@ -153,7 +153,7 @@ export function DemoPage() {
               <p className="font-semibold">Demo instruction</p>
               <p className="mt-2 text-sm leading-6 text-cyan-100">
                 Keep the bracelet page open in another window or on your phone. When the scooter
-                enters the risk zone, the bracelet should switch to High alert.
+                enters the risk zone, the bracelet should switch to warning or critical.
               </p>
             </div>
           </aside>

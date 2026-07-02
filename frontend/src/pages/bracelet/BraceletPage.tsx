@@ -30,6 +30,17 @@ export function BraceletPage() {
 
   const severity = alert?.severity ?? "safe";
   const isAlertActive = Boolean(alert);
+  const hasMetrics = Boolean(
+    alert && (alert.distanceMeters !== null || alert.timeToConflictSeconds !== null),
+  );
+  const distanceText =
+    alert?.distanceMeters !== null && alert?.distanceMeters !== undefined
+      ? `${alert.distanceMeters.toFixed(1)} m`
+      : "Distance n/a";
+  const ttcText =
+    alert?.timeToConflictSeconds !== null && alert?.timeToConflictSeconds !== undefined
+      ? `${alert.timeToConflictSeconds.toFixed(1)} s to conflict`
+      : "TTC n/a";
 
   useEffect(() => {
     if (!alert) {
@@ -65,13 +76,9 @@ export function BraceletPage() {
             {alert?.message ?? "Bracelet prototype is waiting for alerts."}
           </p>
 
-          {alert?.distanceMeters !== null || alert?.timeToConflictSeconds !== null ? (
+          {hasMetrics ? (
             <p className="mt-3 text-sm opacity-80">
-              {alert.distanceMeters !== null ? `${alert.distanceMeters.toFixed(1)} m` : "Distance n/a"}
-              {" • "}
-              {alert.timeToConflictSeconds !== null
-                ? `${alert.timeToConflictSeconds.toFixed(1)} s to conflict`
-                : "TTC n/a"}
+              {distanceText} {" • "} {ttcText}
             </p>
           ) : null}
         </div>
