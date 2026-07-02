@@ -60,7 +60,6 @@ export function useSimulationEngine({ activeAlert, telemetryDevices }: UseSimula
     [PEDESTRIAN_ID]: createPedestrianActor(),
   });
 
-  const latestSpeedRef = useRef<number>(10);
   const trailTickRef = useRef<number>(0);
   const vehicleStateRef = useRef<Record<string, VehicleMotionState>>({});
   const anchorRef = useRef<{ lat: number; lon: number } | null>(null);
@@ -122,6 +121,11 @@ export function useSimulationEngine({ activeAlert, telemetryDevices }: UseSimula
         };
       }
 
+      // In telemetry-driven mode, do not keep alert-based motion targets.
+      if (telemetryDevices.length > 0) {
+        vehicleStateRef.current = {};
+      }
+
       return nextActors;
     });
   }, [telemetryDevices]);
@@ -131,13 +135,18 @@ export function useSimulationEngine({ activeAlert, telemetryDevices }: UseSimula
       return;
     }
 
+    // If live telemetry is available, movement should be telemetry-only.
+    // Alerts are used for severity/primary-threat overlays, not for motion targets.
+    if (telemetryDevices.length > 0) {
+      return;
+    }
+
     const vehicleId = activeAlert.vehicleId ?? FALLBACK_VEHICLE_ID;
     const nextTarget = mapThreatToTarget(
       activeAlert.direction,
       activeAlert.distanceMeters,
       activeAlert.timeToConflictSeconds,
     );
-    latestSpeedRef.current = activeAlert.speedKmh ?? latestSpeedRef.current;
     vehicleStateRef.current[vehicleId] = {
       target: nextTarget,
       lastUpdatedAt: activeAlert.receivedAt,
@@ -171,7 +180,7 @@ export function useSimulationEngine({ activeAlert, telemetryDevices }: UseSimula
         [vehicleId]: nextVehicle,
       };
     });
-  }, [activeAlert]);
+  }, [activeAlert, telemetryDevices.length]);
 
   useEffect(() => {
     let frameId = 0;
@@ -231,7 +240,7 @@ export function useSimulationEngine({ activeAlert, telemetryDevices }: UseSimula
             position: { x: nextX, y: nextY },
             velocity,
             headingDeg,
-            speedKmh: actor.speedKmh > 0 ? actor.speedKmh : latestSpeedRef.current,
+            speedKmh: actor.speedKmh,
             trail: nextTrail,
           };
 

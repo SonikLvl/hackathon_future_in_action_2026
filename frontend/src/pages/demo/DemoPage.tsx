@@ -183,6 +183,11 @@ export function DemoPage() {
               </div>
             </div>
 
+            <p className="mt-2 text-xs uppercase tracking-[0.14em] text-slate-400">
+              Severity reflects the current primary threat vehicle:{" "}
+              <span className="font-semibold text-slate-200">{activeAlert?.vehicleId ?? "n/a"}</span>
+            </p>
+
             <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div className="rounded-2xl border border-white/10 bg-slate-950/80 p-4">
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Risk score</p>

@@ -31,11 +31,26 @@ type ThreatSceneProps = {
 
 export function ThreatScene({ snapshot, direction, ttcSeconds }: ThreatSceneProps) {
   const primaryVehicleId = snapshot.primaryThreatVehicleId;
+  const MAX_VISIBLE_SECONDARY_VEHICLES = 2;
   const primaryVehicle =
     snapshot.actors.find((actor) => actor.kind === "vehicle" && actor.id === primaryVehicleId) ?? null;
-  const otherVehicles = snapshot.actors.filter(
+  const allOtherVehicles = snapshot.actors.filter(
     (actor) => actor.kind === "vehicle" && actor.id !== primaryVehicleId,
   );
+  const visibleOtherVehicles = [...allOtherVehicles]
+    .sort((a, b) => {
+      const distA = Math.hypot(
+        a.position.x - snapshot.conflictPoint.x,
+        a.position.y - snapshot.conflictPoint.y,
+      );
+      const distB = Math.hypot(
+        b.position.x - snapshot.conflictPoint.x,
+        b.position.y - snapshot.conflictPoint.y,
+      );
+      return distA - distB;
+    })
+    .slice(0, MAX_VISIBLE_SECONDARY_VEHICLES);
+  const hiddenOtherVehiclesCount = Math.max(0, allOtherVehicles.length - visibleOtherVehicles.length);
 
   return (
     <div className="mt-6 rounded-2xl border border-cyan-400/20 bg-gradient-to-br from-slate-950 via-slate-950 to-cyan-950/40 p-5">
@@ -58,7 +73,7 @@ export function ThreatScene({ snapshot, direction, ttcSeconds }: ThreatSceneProp
           </div>
 
           <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-            {otherVehicles.map((vehicle) => (
+            {visibleOtherVehicles.map((vehicle) => (
               <polyline
                 key={`${vehicle.id}-trail`}
                 points={vehicle.trail.map((point) => `${point.x},${point.y}`).join(" ")}
@@ -109,6 +124,14 @@ export function ThreatScene({ snapshot, direction, ttcSeconds }: ThreatSceneProp
           />
 
           {snapshot.actors.map((actor) => {
+            if (
+              actor.kind === "vehicle" &&
+              actor.id !== primaryVehicleId &&
+              !visibleOtherVehicles.some((vehicle) => vehicle.id === actor.id)
+            ) {
+              return null;
+            }
+
             if (actor.kind === "pedestrian") {
               return (
                 <div
@@ -137,6 +160,11 @@ export function ThreatScene({ snapshot, direction, ttcSeconds }: ThreatSceneProp
           })}
 
           {snapshot.actors.map((actor) => (
+            (actor.kind === "vehicle" &&
+              actor.id !== primaryVehicleId &&
+              !visibleOtherVehicles.some((vehicle) => vehicle.id === actor.id))
+              ? null
+              : (
             <div
               key={`${actor.id}-label`}
               className="absolute -translate-x-1/2 rounded-full border border-white/15 bg-slate-900/80 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-200"
@@ -144,6 +172,7 @@ export function ThreatScene({ snapshot, direction, ttcSeconds }: ThreatSceneProp
             >
               {actor.kind === "pedestrian" ? "Pedestrian" : actor.id}
             </div>
+              )
           ))}
 
           <div className="absolute left-4 top-4 rounded-full border border-cyan-300/30 bg-slate-900/80 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-200">
@@ -156,6 +185,10 @@ export function ThreatScene({ snapshot, direction, ttcSeconds }: ThreatSceneProp
           <p className="absolute bottom-3 left-3 text-[10px] uppercase tracking-[0.2em] text-slate-300">
             Legend: green=pedestrian, red=primary threat, orange=other vehicles
           </p>
+          <div className="absolute bottom-3 right-3 rounded-full border border-white/20 bg-slate-900/85 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-200">
+            Other traffic: {visibleOtherVehicles.length}
+            {hiddenOtherVehiclesCount > 0 ? ` (+${hiddenOtherVehiclesCount})` : ""}
+          </div>
         </div>
       </div>
     </div>
