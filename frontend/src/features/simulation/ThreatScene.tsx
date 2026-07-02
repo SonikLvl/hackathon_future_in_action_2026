@@ -31,6 +31,11 @@ type ThreatSceneProps = {
 
 export function ThreatScene({ snapshot, direction, ttcSeconds }: ThreatSceneProps) {
   const primaryVehicleId = snapshot.primaryThreatVehicleId;
+  const primaryVehicle =
+    snapshot.actors.find((actor) => actor.kind === "vehicle" && actor.id === primaryVehicleId) ?? null;
+  const otherVehicles = snapshot.actors.filter(
+    (actor) => actor.kind === "vehicle" && actor.id !== primaryVehicleId,
+  );
 
   return (
     <div className="mt-6 rounded-2xl border border-cyan-400/20 bg-gradient-to-br from-slate-950 via-slate-950 to-cyan-950/40 p-5">
@@ -39,8 +44,6 @@ export function ThreatScene({ snapshot, direction, ttcSeconds }: ThreatSceneProp
         <div
           className={`relative h-64 overflow-hidden rounded-xl border border-white/10 bg-gradient-to-b ${severitySceneGlowClassName[snapshot.severity]}`}
         >
-          <div className="simulation-scanline absolute inset-x-0 top-0 h-24 opacity-70" />
-
           <div className="absolute left-1/2 top-5 h-[78%] w-40 -translate-x-1/2 rounded-3xl border border-slate-600/60 bg-slate-900/70">
             <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 border-l border-dashed border-cyan-300/40" />
             <div className="absolute inset-x-3 top-[42%] h-8 rounded-md border border-white/15 bg-white/5" />
@@ -55,39 +58,53 @@ export function ThreatScene({ snapshot, direction, ttcSeconds }: ThreatSceneProp
           </div>
 
           <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-            {snapshot.actors
-              .filter((actor) => actor.kind === "vehicle")
-              .map((vehicle) => (
-                <polyline
-                  key={`${vehicle.id}-trail`}
-                  points={vehicle.trail.map((point) => `${point.x},${point.y}`).join(" ")}
-                  fill="none"
-                  stroke="rgba(251,146,60,0.35)"
-                  strokeWidth="0.8"
-                />
-              ))}
-
-            {snapshot.threatVectors.map((vector, index) => (
-              <line
-                key={`vector-${index}`}
-                x1={vector.from.x}
-                y1={vector.from.y}
-                x2={vector.to.x}
-                y2={vector.to.y}
-                stroke="rgba(248,113,113,0.75)"
-                strokeWidth="0.8"
-                strokeDasharray="2 2"
+            {otherVehicles.map((vehicle) => (
+              <polyline
+                key={`${vehicle.id}-trail`}
+                points={vehicle.trail.map((point) => `${point.x},${point.y}`).join(" ")}
+                fill="none"
+                stroke="rgba(148,163,184,0.28)"
+                strokeWidth="0.7"
               />
             ))}
+            {primaryVehicle ? (
+              <polyline
+                points={primaryVehicle.trail.map((point) => `${point.x},${point.y}`).join(" ")}
+                fill="none"
+                stroke="rgba(248,113,113,0.45)"
+                strokeWidth="1.1"
+              />
+            ) : null}
+
+            {primaryVehicle ? (
+              <line
+                x1={primaryVehicle.position.x}
+                y1={primaryVehicle.position.y}
+                x2={snapshot.conflictPoint.x}
+                y2={snapshot.conflictPoint.y}
+                stroke="rgba(248,113,113,0.75)"
+                strokeWidth="1.2"
+                strokeDasharray="3 2"
+              />
+            ) : null}
           </svg>
 
           <div
-            className="simulation-impact-pulse absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-red-300/80 bg-red-400/15"
+            className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-red-300/60 bg-red-400/10"
             style={{
               left: `${snapshot.conflictPoint.x}%`,
               top: `${snapshot.conflictPoint.y}%`,
-              width: `${snapshot.impactRadius * 1.4}px`,
-              height: `${snapshot.impactRadius * 1.4}px`,
+              width: `${snapshot.impactRadius * 1.25}px`,
+              height: `${snapshot.impactRadius * 1.25}px`,
+            }}
+          />
+          <div
+            className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-red-200/80 bg-red-300/20"
+            style={{
+              left: `${snapshot.conflictPoint.x}%`,
+              top: `${snapshot.conflictPoint.y}%`,
+              width: "10px",
+              height: "10px",
             }}
           />
 
@@ -105,7 +122,7 @@ export function ThreatScene({ snapshot, direction, ttcSeconds }: ThreatSceneProp
             return (
               <div
                 key={actor.id}
-                className={`simulation-vehicle absolute h-8 w-14 -translate-x-1/2 -translate-y-1/2 rounded-md border transition-all duration-300 ${
+                className={`absolute h-8 w-14 -translate-x-1/2 -translate-y-1/2 rounded-md border transition-all duration-300 ${
                   actor.id === primaryVehicleId
                     ? "border-red-200/90 bg-red-400/35 shadow-[0_0_26px_rgba(248,113,113,0.45)]"
                     : "border-orange-200/90 bg-orange-400/30 shadow-[0_0_20px_rgba(251,146,60,0.35)]"
@@ -119,6 +136,16 @@ export function ThreatScene({ snapshot, direction, ttcSeconds }: ThreatSceneProp
             );
           })}
 
+          {snapshot.actors.map((actor) => (
+            <div
+              key={`${actor.id}-label`}
+              className="absolute -translate-x-1/2 rounded-full border border-white/15 bg-slate-900/80 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-200"
+              style={{ left: `${actor.position.x}%`, top: `${Math.max(4, actor.position.y - 7)}%` }}
+            >
+              {actor.kind === "pedestrian" ? "Pedestrian" : actor.id}
+            </div>
+          ))}
+
           <div className="absolute left-4 top-4 rounded-full border border-cyan-300/30 bg-slate-900/80 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-200">
             Approach {directionLabel[direction]}
           </div>
@@ -127,7 +154,7 @@ export function ThreatScene({ snapshot, direction, ttcSeconds }: ThreatSceneProp
           </div>
 
           <p className="absolute bottom-3 left-3 text-[10px] uppercase tracking-[0.2em] text-slate-300">
-            Actor simulation: heading, trails, conflict geometry
+            Legend: green=pedestrian, red=primary threat, orange=other vehicles
           </p>
         </div>
       </div>
