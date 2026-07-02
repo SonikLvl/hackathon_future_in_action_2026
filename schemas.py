@@ -52,11 +52,11 @@ class ActiveDevicesResponse(BaseModel):
 
 AlertSeverity = Literal["safe", "caution", "warning", "critical"]
 AlertDirection = Literal["front", "back", "left", "right", "unknown"]
-EventType = Literal["risk_alert"]
+EventType = Literal["risk_alert", "risk_clear"]
 
 
 class RiskAlertEvent(BaseModel):
-    type: EventType = "risk_alert"
+    type: Literal["risk_alert"] = "risk_alert"
     version: int = 1
     timestamp: str
     deviceId: str
@@ -71,3 +71,14 @@ class RiskAlertEvent(BaseModel):
     speedKmh: float = Field(..., ge=0)
     reason: str
     vibrationPattern: list[int] = Field(default_factory=list)
+
+
+class RiskClearEvent(BaseModel):
+    """Emitted once when a previously active pedestrian/vehicle threat is resolved."""
+
+    type: Literal["risk_clear"] = "risk_clear"
+    version: int = 1
+    timestamp: str
+    deviceId: str
+    vehicleId: str
+    reason: str = "Threat resolved"

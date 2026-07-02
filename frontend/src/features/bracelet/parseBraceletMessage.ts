@@ -72,6 +72,31 @@ function parseRiskAlertEvent(payload: UnknownRecord): RiskAlertEvent | null {
   };
 }
 
+export type RiskClearSignal = {
+  deviceId: string | null;
+  vehicleId: string | null;
+  reason: string | null;
+  receivedAt: number;
+};
+
+export function tryParseRiskClear(rawMessage: string): RiskClearSignal | null {
+  try {
+    const parsed: unknown = JSON.parse(rawMessage);
+    if (isRecord(parsed) && parsed.type === "risk_clear") {
+      return {
+        deviceId: parseOptionalString(parsed.deviceId),
+        vehicleId: parseOptionalString(parsed.vehicleId),
+        reason: parseOptionalString(parsed.reason),
+        receivedAt: Date.now(),
+      };
+    }
+  } catch {
+    // Not JSON or not a clear event; fall through to alert parsing.
+  }
+
+  return null;
+}
+
 function guessDirectionFromText(message: string): AlertDirection {
   const lowerMessage = message.toLowerCase();
 

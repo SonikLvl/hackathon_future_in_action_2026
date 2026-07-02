@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { parseBraceletMessage } from "@/features/bracelet/parseBraceletMessage";
+import { parseBraceletMessage, tryParseRiskClear } from "@/features/bracelet/parseBraceletMessage";
 import type { BraceletAlert, BraceletConnectionStatus } from "@/features/bracelet/types";
 
 const DEFAULT_WS_URL = "ws://localhost:8000";
@@ -61,6 +61,26 @@ export function useRiskAlertStream(options: UseRiskAlertStreamOptions = {}) {
       });
 
       socket.addEventListener("message", (event: MessageEvent<string>) => {
+        const clearSignal = tryParseRiskClear(event.data);
+        if (clearSignal) {
+          setLastMessageAt(clearSignal.receivedAt);
+          setLatestAlert((current) => {
+            if (!current) {
+              return current;
+            }
+            // Only clear if it refers to the currently displayed threat vehicle.
+            if (
+              clearSignal.vehicleId &&
+              current.vehicleId &&
+              clearSignal.vehicleId !== current.vehicleId
+            ) {
+              return current;
+            }
+            return null;
+          });
+          return;
+        }
+
         const parsedAlert = parseBraceletMessage(event.data);
         setLatestAlert(parsedAlert);
         setLastMessageAt(parsedAlert.receivedAt);

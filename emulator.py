@@ -54,47 +54,54 @@ async def listen_to_alerts(stop_event: asyncio.Event):
 
 def build_scenario(include_bike: bool) -> tuple[list[Actor], int]:
     """
-    Простий та зрозумілий сценарій:
-    1) Пішохід рухається вперед
-    2) Самокат наближається назустріч
-    3) (Опційно) Велосипед перетинає траєкторію збоку
+    Простий та зрозумілий сценарій, темп якого підібрано так, щоб ескалацію
+    рівнів (caution -> warning -> critical) було видно й можна було прокоментувати:
+
+    1) Пішохід повільно рухається вперед (на північ).
+    2) Самокат наближається назустріч (з півночі), з невеликим боковим зміщенням,
+       тож вони розминаються поруч, а не "зіштовхуються".
+    3) (Опційно) Велосипед перетинає траєкторію збоку.
+
+    Зближення ~3.4 м/с дає приблизно: caution ~3.5с, warning ~6.5с, critical ~8.5с,
+    після чого самокат минає пішохода і надсилається подія risk_clear.
     """
     pedestrian = Actor(
         device_id="pedestrian_1",
         is_pedestrian=True,
         lat=50.450000,
         lon=30.523400,
-        speed_mps=1.1,
+        speed_mps=0.4,
         azimuth_deg=0.0,
-        dlat_mps=1.1,  # north
+        dlat_mps=0.4,  # north
         dlon_mps=0.0,
     )
+    # ~35 m north, offset ~1.5 m east so they pass side-by-side (min gap ~1.5 m).
     scooter = Actor(
         device_id="scooter_1",
         is_pedestrian=False,
-        lat=50.450520,
-        lon=30.523400,
-        speed_mps=6.2,
+        lat=50.450315,
+        lon=30.523421,
+        speed_mps=3.0,
         azimuth_deg=180.0,
-        dlat_mps=-6.2,  # south
+        dlat_mps=-3.0,  # south
         dlon_mps=0.0,
     )
 
     if not include_bike:
-        return [pedestrian, scooter], 50
+        return [pedestrian, scooter], 26
 
     # Secondary vehicle crossing from right to left (optional).
     bicycle = Actor(
         device_id="bike_1",
         is_pedestrian=False,
-        lat=50.450110,
+        lat=50.450050,
         lon=30.523880,
-        speed_mps=4.0,
+        speed_mps=3.0,
         azimuth_deg=270.0,
         dlat_mps=0.0,
-        dlon_mps=-4.0,
+        dlon_mps=-3.0,
     )
-    return [pedestrian, scooter, bicycle], 60
+    return [pedestrian, scooter, bicycle], 30
 
 
 async def post_actor(session: aiohttp.ClientSession, actor: Actor):
