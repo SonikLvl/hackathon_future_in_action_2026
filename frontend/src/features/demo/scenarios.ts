@@ -5,8 +5,8 @@ const PEDESTRIAN_LON = 30.5234;
 
 export const scooterApproachScenario: ScenarioFrame[] = [
   {
-    label: "Frame 1",
-    description: "Scooter is outside the alert zone.",
+    label: "Кадр 1",
+    description: "Самокат поза зоною тривоги.",
     distanceMeters: 40,
     pedestrian: {
       device_id: "pedestrian_1",
@@ -26,8 +26,8 @@ export const scooterApproachScenario: ScenarioFrame[] = [
     },
   },
   {
-    label: "Frame 2",
-    description: "Scooter is getting closer.",
+    label: "Кадр 2",
+    description: "Самокат наближається.",
     distanceMeters: 27,
     pedestrian: {
       device_id: "pedestrian_1",
@@ -47,8 +47,8 @@ export const scooterApproachScenario: ScenarioFrame[] = [
     },
   },
   {
-    label: "Frame 3",
-    description: "Scooter enters the risk zone.",
+    label: "Кадр 3",
+    description: "Самокат заходить у зону ризику.",
     distanceMeters: 13,
     pedestrian: {
       device_id: "pedestrian_1",
@@ -68,8 +68,8 @@ export const scooterApproachScenario: ScenarioFrame[] = [
     },
   },
   {
-    label: "Frame 4",
-    description: "Scooter is very close. Bracelet should alert.",
+    label: "Кадр 4",
+    description: "Самокат зовсім близько. Браслет має спрацювати.",
     distanceMeters: 6,
     pedestrian: {
       device_id: "pedestrian_1",
