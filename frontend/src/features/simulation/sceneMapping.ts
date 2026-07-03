@@ -3,6 +3,23 @@ import type { AlertDirection, AlertSeverity } from "@/features/bracelet/types";
 import type { ScenePoint } from "@/features/simulation/types";
 
 const SCENE_CENTER: ScenePoint = { x: 50, y: 62 };
+
+// 1 metre -> scene units. Shared by the projection (useSimulationEngine) and the
+// risk-zone overlay so the drawn rings match the actual distance bands.
+export const METERS_TO_SCENE = 0.85;
+
+// Distance bands mirror the backend risk engine (metres).
+export const RISK_ZONE_METERS = { caution: 24, warning: 14, critical: 7 } as const;
+
+export type RiskZoneRadii = { caution: number; warning: number; critical: number };
+
+export function getRiskZoneRadii(): RiskZoneRadii {
+  return {
+    caution: RISK_ZONE_METERS.caution * METERS_TO_SCENE,
+    warning: RISK_ZONE_METERS.warning * METERS_TO_SCENE,
+    critical: RISK_ZONE_METERS.critical * METERS_TO_SCENE,
+  };
+}
 const DIRECTION_START_POINTS: Record<AlertDirection, ScenePoint> = {
   front: { x: 50, y: 12 },
   back: { x: 50, y: 92 },

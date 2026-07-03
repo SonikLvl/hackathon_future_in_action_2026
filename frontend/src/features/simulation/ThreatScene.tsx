@@ -1,4 +1,5 @@
 import type { AlertSeverity } from "@/features/bracelet/types";
+import { getRiskZoneRadii } from "@/features/simulation/sceneMapping";
 import type { SimulationSnapshot } from "@/features/simulation/types";
 
 const severitySceneGlowClassName: Record<AlertSeverity, string> = {
@@ -60,6 +61,12 @@ export function ThreatScene({ snapshot, ttcSeconds }: ThreatSceneProps) {
   const liveDirectionLabel = getLiveDirectionLabel(snapshot);
 
   const hasActiveThreat = snapshot.severity !== "safe";
+  const zoneRadii = getRiskZoneRadii();
+  const riskZones = [
+    { key: "caution", radius: zoneRadii.caution, stroke: "rgba(250,204,21,0.35)", meters: 24 },
+    { key: "warning", radius: zoneRadii.warning, stroke: "rgba(251,146,60,0.45)", meters: 14 },
+    { key: "critical", radius: zoneRadii.critical, stroke: "rgba(248,113,113,0.6)", meters: 7 },
+  ];
 
   // Threat arrow: a clean, centered vector from the primary vehicle toward the
   // pedestrian, stopping just short of the safety ring, with a solid arrowhead.
@@ -74,7 +81,7 @@ export function ThreatScene({ snapshot, ttcSeconds }: ThreatSceneProps) {
     const length = Math.hypot(dx, dy) || 1;
     const ux = dx / length;
     const uy = dy / length;
-    const endGap = 6; // keep the arrowhead just outside the pedestrian marker
+    const endGap = 3.2; // stop just outside the pedestrian marker
     const tip = { x: focusPoint.x - ux * endGap, y: focusPoint.y - uy * endGap };
     const headSize = 3.4;
     const spread = 0.45;
@@ -111,6 +118,19 @@ export function ThreatScene({ snapshot, ttcSeconds }: ThreatSceneProps) {
           </div>
 
           <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+            {riskZones.map((zone) => (
+              <circle
+                key={zone.key}
+                cx={focusPoint.x}
+                cy={focusPoint.y}
+                r={zone.radius}
+                fill={zone.key === "critical" ? "rgba(248,113,113,0.06)" : "none"}
+                stroke={zone.stroke}
+                strokeWidth="1"
+                strokeDasharray="2 2"
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
             {threatArrow ? (
               <>
                 <line
@@ -130,25 +150,6 @@ export function ThreatScene({ snapshot, ttcSeconds }: ThreatSceneProps) {
               </>
             ) : null}
           </svg>
-
-          <div
-            className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-red-300/60 bg-red-400/10"
-            style={{
-              left: `${focusPoint.x}%`,
-              top: `${focusPoint.y}%`,
-              width: `${snapshot.impactRadius * 1.25}px`,
-              height: `${snapshot.impactRadius * 1.25}px`,
-            }}
-          />
-          <div
-            className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-red-200/80 bg-red-300/20"
-            style={{
-              left: `${focusPoint.x}%`,
-              top: `${focusPoint.y}%`,
-              width: "10px",
-              height: "10px",
-            }}
-          />
 
           {snapshot.actors.map((actor) => {
             if (
@@ -212,16 +213,39 @@ export function ThreatScene({ snapshot, ttcSeconds }: ThreatSceneProps) {
           <div className="absolute left-4 top-4 rounded-full border border-cyan-300/30 bg-slate-900/80 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-200">
             Approach {liveDirectionLabel}
           </div>
-          <div className="absolute right-4 top-4 rounded-full border border-white/20 bg-slate-900/80 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-200">
-            TTC {formatMetric(ttcSeconds, "s")}
+          <div className="absolute right-4 top-4 flex flex-col items-end gap-2">
+            <div className="rounded-full border border-white/20 bg-slate-900/80 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-200">
+              TTC {formatMetric(ttcSeconds, "s")}
+            </div>
+            <div className="rounded-full border border-white/20 bg-slate-900/85 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-200">
+              Other traffic: {visibleOtherVehicles.length}
+              {hiddenOtherVehiclesCount > 0 ? ` (+${hiddenOtherVehiclesCount})` : ""}
+            </div>
           </div>
 
-          <p className="absolute bottom-3 left-3 text-[10px] uppercase tracking-[0.2em] text-slate-300">
-            Legend: green=pedestrian, red=primary threat, center ring=pedestrian safety zone
-          </p>
-          <div className="absolute bottom-3 right-3 rounded-full border border-white/20 bg-slate-900/85 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-200">
-            Other traffic: {visibleOtherVehicles.length}
-            {hiddenOtherVehiclesCount > 0 ? ` (+${hiddenOtherVehiclesCount})` : ""}
+          <div className="absolute bottom-3 left-3 max-w-[78%] rounded-lg border border-white/10 bg-slate-900/85 px-3 py-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-300">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-full bg-emerald-300" />
+                Pedestrian
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-1.5 w-3 rounded-sm bg-red-400" />
+                Threat
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-full border border-yellow-300/80" />
+                24m
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-full border border-orange-300/80" />
+                14m
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-full border border-red-300/80" />
+                7m
+              </span>
+            </div>
           </div>
         </div>
       </div>

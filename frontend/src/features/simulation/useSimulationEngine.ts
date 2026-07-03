@@ -2,12 +2,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { BraceletAlert } from "@/features/bracelet/types";
 import type { TelemetryDeviceSnapshot } from "@/features/realtime/useTelemetrySnapshot";
-import { estimateHeadingDeg, getImpactRadius, getSceneCenter } from "@/features/simulation/sceneMapping";
+import {
+  METERS_TO_SCENE,
+  estimateHeadingDeg,
+  getImpactRadius,
+  getSceneCenter,
+} from "@/features/simulation/sceneMapping";
 import type { SimulationActor, SimulationSnapshot } from "@/features/simulation/types";
 
 const TRAIL_LIMIT = 14;
 const BASE_SMOOTHING = 0.18;
-const METERS_TO_SCENE = 0.85; // 1m -> 0.85 scene units
 const PEDESTRIAN_ID = "pedestrian_1";
 // Scene-unit jump above which we snap instead of lerp (a device was respawned /
 // a new scenario started), so actors don't appear to be "dragged" across the map.
