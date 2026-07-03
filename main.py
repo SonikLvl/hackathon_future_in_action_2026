@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from sqlalchemy import text
@@ -20,7 +20,12 @@ from schemas import (
     IncidentResponse,
     ActiveDevicesResponse,
     ActiveDeviceState,
+    ScenarioInfo,
+    ScenariosResponse,
+    SimulationStatus,
+    StartSimulationRequest,
 )
+from simulation_runner import manager as simulation_manager
 from seed import seed_test_data
 
 # ---------- Запуск і зупинка фонової задачі ----------
@@ -34,6 +39,7 @@ async def lifespan(app: FastAPI):
     task = asyncio.create_task(risk_engine_loop())
     
     yield 
+    await simulation_manager.stop()
     task.cancel()
 
 app = FastAPI(lifespan=lifespan)
@@ -131,6 +137,37 @@ async def get_active_devices():
         ]
 
     return ActiveDevicesResponse(devices=devices)
+
+
+# ---------- Вбудований симулятор сценаріїв (демо-інструмент) ----------
+@app.get("/api/simulation/scenarios", response_model=ScenariosResponse, tags=["Simulation"])
+async def list_scenarios():
+    """Повертає перелік доступних сценаріїв для запуску з UI."""
+    scenarios = [ScenarioInfo(**item) for item in simulation_manager.list_scenarios()]
+    return ScenariosResponse(scenarios=scenarios)
+
+
+@app.get("/api/simulation/status", response_model=SimulationStatus, tags=["Simulation"])
+async def simulation_status():
+    """Поточний стан вбудованого симулятора."""
+    return SimulationStatus(**simulation_manager.status())
+
+
+@app.post("/api/simulation/start", response_model=SimulationStatus, tags=["Simulation"])
+async def start_simulation(request: StartSimulationRequest):
+    """Запускає обраний сценарій. Будь-який попередній запуск зупиняється."""
+    try:
+        await simulation_manager.start(request.scenarioId)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Unknown scenario: {request.scenarioId}")
+    return SimulationStatus(**simulation_manager.status())
+
+
+@app.post("/api/simulation/stop", response_model=SimulationStatus, tags=["Simulation"])
+async def stop_simulation():
+    """Зупиняє активний сценарій."""
+    await simulation_manager.stop()
+    return SimulationStatus(**simulation_manager.status())
 
 
 @app.websocket("/ws/{client_id}")

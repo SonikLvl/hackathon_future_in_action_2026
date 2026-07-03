@@ -159,5 +159,5 @@ export function useSimulationEngine({ activeAlert, telemetryDevices }: UseSimula
       primaryThreatVehicleId: primaryVehicle?.id ?? null,
       impactRadius: getImpactRadius(severity, activeAlert?.timeToConflictSeconds ?? null),
     };
-  }, [activeAlert?.severity, activeAlert?.timeToConflictSeconds, activeAlert?.vehicleId, actors]);
+  }, [activeAlert, actors]);
 }
