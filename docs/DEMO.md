@@ -1,23 +1,27 @@
-# VARTA — Demo Runbook & Presentation Guide
+# VARTA — Running the System
 
-Everything needed to **run** the live demo and **narrate** it convincingly. Read
-[`ARCHITECTURE.md`](./ARCHITECTURE.md) and [`RISK_ENGINE.md`](./RISK_ENGINE.md) first if
-a judge might go deep.
+How to start VARTA locally, drive the built-in scenarios, and interpret what you see.
+Read [`ARCHITECTURE.md`](./ARCHITECTURE.md) and [`RISK_ENGINE.md`](./RISK_ENGINE.md) for
+the design and the algorithm behind the behavior described here.
 
 ---
 
-## 1. What the audience sees
+## 1. The two views
 
-Two screens, reacting to the same event stream in perfect sync:
+Two screens react to the same event stream in sync:
 
-- **Laptop — `/demo` (operator console):** a live map with a green pedestrian and an
-  approaching vehicle, an "Active threat" card (severity, risk score, distance, TTC,
-  direction, vehicle), a rolling event timeline, and a scenario-phase badge.
-- **Phone — `/bracelet` (the pedestrian's device):** full-screen color that escalates
-  green → yellow → orange → red, the directional warning text, and the phone
-  **vibrates** with a severity-specific pattern.
+- **`/demo` — operator console:** a live map with a green pedestrian at the centre,
+  surrounded by three **risk-zone rings** (24 m caution, 14 m warning, 7 m critical). An
+  approaching vehicle is drawn in red with a solid **threat arrow** pointing at the
+  pedestrian; other traffic is orange with an "other traffic (+N)" counter. An
+  "Active threat" card shows severity, risk score, distance, TTC, direction, and vehicle;
+  a rolling event timeline (with a **Clear history** button) logs alerts; and a
+  **scenario panel** lets the operator start/stop encounters and shows the live phase.
+- **`/bracelet` — the pedestrian's device:** a full-screen color that escalates
+  green → yellow → orange → red, the directional warning text, and a severity-specific
+  **vibration** pattern.
 
-The story arc: **calm → caution → warning → critical → cleared**, in ~10 seconds.
+A typical encounter runs **calm → caution → warning → critical → cleared** in ~10 s.
 
 ---
 
@@ -29,7 +33,7 @@ The story arc: **calm → caution → warning → critical → cleared**, in ~10
 
 ---
 
-## 3. Start everything (4 terminals)
+## 3. Start the system
 
 **Terminal 1 — database**
 
@@ -46,7 +50,7 @@ pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
-Wait for “База даних успішно ініціалізована!” — startup also seeds `pedestrian_1` and
+Wait for "База даних успішно ініціалізована!" — startup also seeds `pedestrian_1` and
 `scooter_1` and launches the risk-engine loop.
 
 **Terminal 3 — frontend**
@@ -65,91 +69,83 @@ npm run dev                          # add -- --host 0.0.0.0 to open on a phone
 
 Both headers should read **Live**.
 
-**Terminal 4 — run the scenario** (venv active, from repo root)
+---
+
+## 4. Run a scenario (from the console)
+
+The console drives everything — no extra terminal needed. In the **scenario panel** on
+`/demo`, pick a scenario and press **Start**. The backend scenario runner streams the
+scripted actors into hot state, the risk engine reacts, and both views update. Press
+**Stop** (or start another scenario) to end it; the runner purges its own actors so the
+map is left clean.
+
+| Scenario                         | What it demonstrates                                              |
+| -------------------------------- | ----------------------------------------------------------------- |
+| **Scooter head-on**              | The canonical caution → warning → critical → clear arc from front |
+| **Bike crossing from the side**  | A crossing conflict, reported as a `right`-side direction         |
+| **Scooter overtaking from behind** | An overtake-and-pass, reported as a `back` direction            |
+| **Busy street (scooter + bike)** | Two vehicles at once; the console highlights the primary threat   |
+
+**Alternative — CLI emulator.** `emulator.py` produces the same telemetry from the
+command line (venv active, from repo root):
 
 ```bash
 python emulator.py                   # add --with-bike for a second, crossing vehicle
 ```
 
-> Re-run `python emulator.py` any time to replay. It stops itself cleanly after a
-> short stabilization phase — no leftover "twitching" actors.
+It stops itself cleanly after a short stabilization phase. Use it when you want a
+headless driver; otherwise the console scenario panel is the simpler path.
 
 ---
 
-## 4. Pre-demo checklist (60 seconds before you present)
+## 5. What to expect, phase by phase (`head_on`)
 
-- [ ] Console and bracelet both show **Live** (green).
-- [ ] `GET http://localhost:8000/api/active-devices` returns devices (backend healthy).
-- [ ] Phone volume/vibration on; screen won't sleep.
-- [ ] Browser zoom set so the map + card are both visible on the projector.
-- [ ] Do one dry run of `python emulator.py`; confirm caution→warning→critical→clear.
-- [ ] Clear the timeline (refresh `/demo`) right before the real run for a clean feed.
+| Phase        | Console                                                            | Bracelet                                  |
+| ------------ | ----------------------------------------------------------------- | ----------------------------------------- |
+| **caution**  | Vehicle enters the outer (24 m) ring; threat arrow appears; card shows caution + score in 45–64 | yellow, soft buzz, direction text (e.g. "спереду") |
+| **warning**  | Vehicle crosses the 14 m ring; escalates immediately; score 65–84 | orange, stronger buzz                     |
+| **critical** | Vehicle inside the 7 m ring; score 85–100; incident logged once   | red, strongest vibration pattern          |
+| **clear**    | Vehicle passes and is no longer closing; a single `risk_clear`    | returns to green/idle                     |
 
----
-
-## 5. The narration script (~90 seconds)
-
-**Hook (10s).** "E-scooters are silent, fast, and everywhere. For a pedestrian —
-especially someone with low vision — the first warning is often the impact. VARTA gives
-them a warning _before_ it."
-
-**Setup (10s).** _Point at the console._ "This is our safety console. Green is the
-pedestrian, walking. This vehicle is a scooter streaming its GPS and speed to our
-backend ten times a cycle. Watch both the screen and the phone."
-
-**Run it (start the emulator).**
-
-- **Caution (~3.5s in).** "The scooter is ~24 m away and _closing_. VARTA raises a
-  **caution** — a gentle heads-up. Note the phone: yellow, a soft buzz, and it already
-  says the direction — _front_, relative to where the pedestrian is walking."
-- **Warning (~6.5s).** "Now ~14 m. It escalates to **warning** — instantly, we don't
-  wait on a timer when danger is rising. The risk score climbs, the map highlights this
-  vehicle as the primary threat."
-- **Critical (~8.5s).** "Under 7 m — **critical**. Strongest vibration pattern, and on
-  the backend we just logged this as a near-miss incident for the city's heatmap."
-- **Clear (~10.5s).** "The scooter passes. It's no longer closing, so VARTA sends a
-  single **clear** — both screens calmly return to idle. No nagging, no false alarms."
-
-**Punchline (10s).** "One encounter, one clean escalation, one clear — not a wall of
-beeps. That restraint is the hard part, and it's exactly what our risk engine is built
-to do."
+Escalation is immediate (a rising threat never waits on a timer); de-escalation as the
+vehicle recedes is suppressed, so you get exactly one alert per severity plus one clear —
+never a downgrade flicker. See
+[`RISK_ENGINE.md`](./RISK_ENGINE.md#6-emission-policy--say-something-only-when-it-matters).
 
 ---
 
-## 6. Why it's technically credible (drop these in)
+## 6. Design FAQ
 
-- **It reasons, it doesn't just measure proximity.** Distance _and_ time-to-conflict
-  _and_ whether the vehicle is actually closing. A vehicle parked 3 m away stays silent.
-- **Escalation-aware, fatigue-free.** Emits on entry and escalation, suppresses
-  downgrades, clears itself. See [`RISK_ENGINE.md`](./RISK_ENGINE.md#6-emission-policy--say-something-only-when-it-matters).
-- **Two synchronized clients from one contract.** Console and bracelet consume the same
-  versioned `risk_alert` / `risk_clear` events over WebSocket.
-- **Sub-second, server-pushed.** 0.5 s risk loop + WebSocket push, not phone polling.
+**Is this real GPS?** The pipeline is real end-to-end — telemetry API, risk engine,
+WebSocket, UI. The scenario runner (or emulator) stands in for hardware so encounters are
+reproducible; a real device would `POST` the identical payload to `/api/telemetry`.
 
----
+**How are false alarms avoided?** Three gates: the vehicle must be moving (> 1.5 m/s), it
+must be _closing_ (with a jitter epsilon), and de-escalation is suppressed so severity
+never flickers. Non-threats produce nothing.
 
-## 7. Anticipated judge questions (and crisp answers)
-
-**"Is this real GPS?"** The pipeline is real end-to-end — telemetry API, risk engine,
-WebSocket, UI. We swap the hardware for an emulator so the scenario is reproducible on
-stage; a real device would `POST` the identical payload.
-
-**"How do you avoid false alarms?"** Three gates: the vehicle must be moving (>1.5 m/s),
-it must be _closing_ (with a jitter epsilon), and we suppress de-escalation so it never
-flickers. Non-threats simply produce nothing.
-
-**"Won't it spam the user?"** No — the emission policy yields ~one alert per severity
+**Won't it spam the user?** No — the emission policy yields about one alert per severity
 step plus one clear per encounter. Same-severity refreshes are throttled to every 2.5 s.
 
-**"Does it scale?"** Today it's single-process with in-memory hot state (great latency,
-simple). Production swaps that for a shared store / stream and shards pairs spatially —
-see the roadmap below. The contracts and risk logic don't change.
+**Does it scale?** Today it is single-process with in-memory hot state (low latency,
+simple). Production would swap that for a shared store / stream and shard pairs spatially
+(see §8). The contracts and risk logic stay the same.
 
-**"How is direction correct?"** It's computed relative to the pedestrian's heading, not
-compass north, so "front/back/left/right" mean what the person actually experiences.
+**How is direction correct?** It is computed relative to the pedestrian's heading, not
+compass north, so "front / back / left / right" mean what the person actually experiences.
 
-**"What about privacy?"** Hot state is ephemeral and auto-expires after 60 s; only
+**What about privacy?** Hot state is ephemeral and auto-expires after 60 s; only
 anonymized near-miss incidents (location + distance) are persisted.
+
+---
+
+## 7. Verifying a healthy setup
+
+- [ ] Console and bracelet both show **Live** (green).
+- [ ] `GET http://localhost:8000/api/active-devices` returns devices.
+- [ ] `GET http://localhost:8000/api/simulation/scenarios` lists the four scenarios.
+- [ ] Starting a scenario yields caution → warning → critical → clear on both views.
+- [ ] Phone volume/vibration on; screen won't sleep (for the vibration effect).
 
 ---
 
@@ -158,11 +154,11 @@ anonymized near-miss incidents (location + distance) are persisted.
 | MVP today                       | Production next                                                         |
 | ------------------------------- | ----------------------------------------------------------------------- |
 | In-memory dict + single process | Redis / streaming state, spatially-sharded pair evaluation              |
-| Emulator generates telemetry    | Real device SDK (phone app + vehicle tracker) posting the same contract |
+| Scripted scenarios / emulator   | Real device SDK (phone app + vehicle tracker) posting the same contract |
 | Closing-speed TTC heuristic     | Full trajectory-intersection prediction, map/lane context               |
 | `create_all` on boot            | Alembic migrations                                                      |
 | Near-miss rows in Postgres      | City dashboard: near-miss heatmaps, hotspot analytics for planners      |
-| Local-network demo              | TLS, auth on telemetry + WebSocket, per-device tokens                   |
+| Local-network deployment        | TLS, auth on telemetry + WebSocket, per-device tokens                   |
 
 ---
 
@@ -171,8 +167,9 @@ anonymized near-miss incidents (location + distance) are persisted.
 | Symptom                                  | Fix                                                                                                                            |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | Console/bracelet stuck "Connecting"      | Backend not up, or wrong `VITE_WS_URL`. Confirm `uvicorn` on :8000.                                                            |
-| Emulator: `ModuleNotFoundError: aiohttp` | venv not active / deps not installed. `source venv/bin/activate && pip install -r requirements.txt`.                           |
-| Nothing happens when emulator runs       | Ensure the seed created `pedestrian_1`/`scooter_1` (check backend startup log); the bracelet client id must be `pedestrian_1`. |
-| Map jitters / actors twitch after finish | Fixed — emulator stops vehicles in a stabilization phase; re-pull latest and re-run.                                           |
-| Phone doesn't vibrate                    | Browser vibration needs a real device + user gesture; the on-screen color/pattern still demonstrates it.                       |
-| Frontend build/lint fails on Node 20     | Use Node ≥ 22.12 (see `frontend/package.json` `engines`).                                                                      |
+| Scenario panel is empty / Start does nothing | Backend not reachable; check `GET /api/simulation/scenarios` and the backend log.                                          |
+| Nothing happens when a scenario runs     | Ensure the seed created `pedestrian_1` (check backend startup log); the bracelet client id must be `pedestrian_1`.            |
+| Emulator: `ModuleNotFoundError: aiohttp` | venv not active / deps not installed. `source venv/bin/activate && pip install -r requirements.txt`.                          |
+| Actors "drag" across the map on restart  | Fixed — the scene snaps actors to fresh scenario start positions instead of sliding; re-pull latest.                          |
+| Phone doesn't vibrate                    | Browser vibration needs a real device + user gesture; the on-screen color/pattern still demonstrates it.                      |
+| Frontend build/lint fails on Node 20     | Use Node ≥ 22.12 (see `frontend/package.json` `engines`).                                                                     |

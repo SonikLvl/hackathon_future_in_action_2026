@@ -2,7 +2,8 @@
 
 This document explains how VARTA is built, how data flows through it in real time,
 and _why_ each major decision was made. The companion [`RISK_ENGINE.md`](./RISK_ENGINE.md)
-drills into the scoring algorithm; [`DEMO.md`](./DEMO.md) covers running and presenting it.
+drills into the scoring algorithm; [`DEMO.md`](./DEMO.md) covers running the system and
+its built-in scenarios.
 
 ---
 
@@ -13,13 +14,14 @@ read-model for visualization.
 
 ```mermaid
 flowchart LR
-    subgraph Sources["Devices / Emulator"]
+    subgraph Sources["Devices / scenario runner / emulator"]
         V["Vehicles<br/>(scooter, bike, car)"]
         P["Pedestrian<br/>(web app / bracelet)"]
     end
 
     subgraph Backend["FastAPI backend (:8000)"]
         API["POST /api/telemetry"]
+        SIM["Scenario runner<br/>(/api/simulation/*)"]
         STATE[("In-memory state<br/>dict + asyncio.Lock")]
         RE["Risk engine loop<br/>(asyncio, every 0.5s)"]
         CM["ConnectionManager<br/>(WebSocket fan-out)"]
@@ -35,6 +37,8 @@ flowchart LR
     V -- "position + speed" --> API
     P -- "position + speed" --> API
     API --> STATE
+    SIM -- "scripted actors" --> STATE
+    CONSOLE -- "start / stop scenario" --> SIM
     STATE --> RE
     RE -- "risk_alert / risk_clear" --> CM
     RE -- "near-miss incident" --> DB
@@ -117,9 +121,39 @@ risk logic, just "where is everyone right now".
 
 Async SQLAlchemy over `asyncpg`. Tables: `users`, `devices`, `vehicles`, `incidents`.
 On startup the app creates tables (`create_all`, MVP shortcut for Alembic) and seeds
-`pedestrian_1` + `scooter_1` so the emulator's IDs resolve. The risk engine writes an
+`pedestrian_1` + `scooter_1` so the seeded IDs resolve. The risk engine writes an
 `Incident` row once per episode when a pair first reaches **critical** — this is the
 seed of a future near-miss heatmap.
+
+### 2.7 Scenario runner — `simulation_runner.py` + `/api/simulation/*`
+
+An in-process `SimulationManager` owns a single scripted-scenario task and its lifecycle.
+Instead of a separate CLI process, the operator starts and stops encounters directly from
+the console; the manager advances each scripted actor once per tick and writes its frame
+into `active_devices` exactly as a real device's `POST /api/telemetry` would. From the
+risk engine's point of view the source is indistinguishable from live hardware.
+
+Four scenarios are registered:
+
+| `id`           | Name                         | What it exercises                                        |
+| -------------- | ---------------------------- | -------------------------------------------------------- |
+| `head_on`      | Scooter head-on              | The canonical caution → warning → critical → clear arc   |
+| `side_crossing`| Bike crossing from the side  | A `right`-direction crossing conflict                    |
+| `from_behind`  | Scooter overtaking from behind | A `back`-direction overtake-and-pass                    |
+| `busy_street`  | Busy street (scooter + bike) | Two vehicles at once; console picks the primary threat   |
+
+The manager tracks the device IDs it owns (`_managed_ids`) and, on stop or when switching
+scenarios, purges only those devices from hot state — the pedestrian and any real devices
+are left untouched, so the scene never leaves "ghost" actors behind.
+
+| Endpoint                      | Method | Purpose                                    |
+| ----------------------------- | ------ | ------------------------------------------ |
+| `/api/simulation/scenarios`   | GET    | List available scenarios (id/name/desc)    |
+| `/api/simulation/status`      | GET    | `{ running, scenarioId, phase, elapsedSeconds }` |
+| `/api/simulation/start`       | POST   | Start a scenario by `scenarioId`           |
+| `/api/simulation/stop`        | POST   | Stop the running scenario and purge its actors |
+
+The task is also cancelled during FastAPI `lifespan` shutdown so nothing is left running.
 
 ---
 
@@ -197,7 +231,7 @@ never guesses — it matches on `type`.
 ```
 
 **Why a versioned, self-describing contract?** It decouples the two halves of the team,
-lets the bracelet and console share one parser, and makes the payload demo-explainable
+lets the bracelet and console share one parser, and keeps the payload self-explanatory
 (`reason` and `message` are human-readable). `version` leaves room to evolve without
 breaking older clients.
 
@@ -219,9 +253,12 @@ video-friendly variant.
   matches the one on screen, and does **not** push clears into the history feed.
 - **`useTelemetrySnapshot`** — polls `/api/active-devices` every 500 ms into a typed
   `TelemetryDeviceSnapshot[]`.
+- **`useSimulationControl`** — fetches the scenario catalogue once, polls
+  `/api/simulation/status`, and exposes `start`/`stop`. It backs the console's scenario
+  panel so an operator can drive encounters without touching a terminal.
 
 Both `/demo` and `/bracelet` reuse `useRiskAlertStream`, guaranteeing they react to the
-exact same event stream — which is the whole point of the "synchronized alert" demo.
+exact same event stream — which is what keeps the console and the bracelet in sync.
 
 ### Simulation (`features/simulation`)
 
@@ -234,16 +271,32 @@ exact same event stream — which is the whole point of the "synchronized alert"
     doesn't rubber-band as GPS values change.
   - **Adaptive smoothing** (`lerpAdaptive`) eases actors toward their telemetry target
     and snaps when very close, avoiding both lag and micro-oscillation.
-- **`ThreatScene`** — pure SVG/Tailwind render of the snapshot: pedestrian (green),
-  primary threat (red) with its trail and threat vector, up to 2 nearest secondary
-  vehicles (orange) plus an "other traffic (+N)" counter, a live directional badge, and
-  a TTC readout. No animation library.
+  - **Snap-on-teleport.** When a new scenario starts, actors jump to fresh start
+    positions; a jump larger than a threshold is treated as a teleport, so the actor
+    snaps (and clears its trail) instead of sliding across the map from the old scenario.
+- **`ThreatScene`** — a pure SVG/Tailwind render of the snapshot on a square canvas so
+  distances and angles are uniform:
+  - **Pedestrian (green)** at the anchor, surrounded by three concentric **risk-zone
+    rings** drawn at the engine's real thresholds (24 m caution, 14 m warning, 7 m
+    critical) via the shared `METERS_TO_SCENE` scale — the rings make the severity bands
+    literally visible.
+  - **Primary threat (red)** with a solid **threat arrow** (non-scaling stroke) that
+    points from the vehicle to the pedestrian, plus a bright center dot anchoring its
+    origin. The arrow and dot render **only when there is an active threat**.
+  - Up to two nearest **secondary vehicles (orange)** plus an "other traffic (+N)"
+    counter, a live directional badge, a TTC readout, and a compact color legend.
+- **`ScenarioControls`** — a console panel listing the backend scenarios with explicit
+  Start/Stop buttons; it shows live `phase` and `elapsedSeconds` from
+  `useSimulationControl`. This replaced an earlier client-side phase heuristic — the
+  phase now comes straight from the backend runner, so it is authoritative.
 
 ```mermaid
 flowchart TD
     WS["useRiskAlertStream<br/>(WebSocket events)"] --> DEMO["DemoPage"]
     POLL["useTelemetrySnapshot<br/>(/api/active-devices)"] --> ENGINE["useSimulationEngine"]
+    SIMCTL["useSimulationControl<br/>(/api/simulation/*)"] --> CONTROLS["ScenarioControls"]
     DEMO --> ENGINE
+    DEMO --> CONTROLS
     ENGINE --> SCENE["ThreatScene (SVG)"]
     WS --> BR["BraceletPage<br/>(vibrate + full-screen)"]
 ```
@@ -258,13 +311,13 @@ flowchart TD
 | **In-memory hot state**                 | Risk decisions need the _latest_ position at sub-second cadence. A dict lookup beats a DB round-trip; Postgres is reserved for cold/audit data. |
 | **WebSocket push (not client polling)** | Safety alerts must be immediate and server-initiated. Polling from a phone every second wastes battery and adds latency.                        |
 | **Split event vs. snapshot paths**      | Lets the _decision_ (discrete, meaningful) and the _animation_ (continuous, cosmetic) evolve independently and stay visually stable.            |
-| **Versioned discriminated events**      | Shared, future-proof contract; one parser for console + bracelet; human-readable for the demo.                                                  |
-| **React + Vite + Tailwind, SVG scene**  | Fast iteration, no heavy game/animation deps, crisp on a projector.                                                                             |
-| **Emulator instead of hardware**        | Reproducible, tunable, narratable demo without GPS units.                                                                                       |
+| **Versioned discriminated events**      | Shared, future-proof contract; one parser for console + bracelet; human-readable payloads.                                                      |
+| **React + Vite + Tailwind, SVG scene**  | Fast iteration, no heavy game/animation dependencies, crisp vector rendering at any display size.                                               |
+| **Scripted scenarios instead of hardware** | Reproducible and tunable without GPS units; a real device would `POST` the identical telemetry payload.                                       |
 
 ---
 
-## 7. Known limits (honest, and intentional for an MVP)
+## 7. Known limitations (current MVP)
 
 - **Single-process, in-memory state** — no horizontal scaling yet; state is lost on
   restart. Fine for a demo, replaced by Redis/streaming in production (see roadmap).

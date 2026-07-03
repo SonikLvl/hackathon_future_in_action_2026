@@ -9,7 +9,8 @@ Design goals, in priority order:
 1. **Correctness of intent** — only warn about vehicles that are genuinely closing in.
 2. **Explainability** — every alert carries a human-readable `reason` and a direction.
 3. **No alert fatigue** — speak on escalation, stay quiet otherwise, and clean up after.
-4. **Demo legibility** — the escalation must be slow enough for a human to narrate.
+4. **Perceptible escalation** — transitions between severities are paced so a person has
+   time to perceive and react to each step, rather than jumping straight to critical.
 
 ---
 
@@ -99,9 +100,10 @@ agrees with the label:
 | warning  | 65–84      |
 | critical | 85–100     |
 
-This resolves a real tension: to make the demo watchable we slow the vehicles down, but
-slow vehicles would otherwise produce low raw scores. Anchoring the gauge to the
-distance-driven band keeps the number climbing smoothly with the escalation.
+This resolves a real tension: the scenarios run at moderate, realistic micromobility
+speeds, and a slow vehicle would otherwise produce a low raw score even while it is
+metres away and closing. Anchoring the gauge to the distance-driven band keeps the
+number consistent with the label and climbing smoothly through the escalation.
 
 ---
 
@@ -164,11 +166,11 @@ are swallowed so they can never take down the risk loop.
 
 ---
 
-## 9. Worked example — the demo scenario
+## 9. Worked example — the `head_on` scenario
 
-The emulator drives: pedestrian walking north at **0.4 m/s**, scooter approaching from
-~**35 m** north at **3.0 m/s**, offset ~1.5 m so they pass side-by-side. Closing speed
-≈ **3.4 m/s**.
+The `head_on` scenario drives: pedestrian walking north at **0.4 m/s**, scooter
+approaching from ~**35 m** north at **3.0 m/s**, offset ~1.5 m so they pass side-by-side.
+Closing speed ≈ **3.4 m/s**.
 
 | Time    | Distance | Severity     | What the pedestrian gets                        |
 | ------- | -------- | ------------ | ----------------------------------------------- |
@@ -178,13 +180,100 @@ The emulator drives: pedestrian walking north at **0.4 m/s**, scooter approachin
 | ~8.5 s  | ~7 m     | **critical** | strongest buzz, incident logged once            |
 | ~10.5 s | passing  | → **clear**  | `risk_clear`, console + bracelet return to idle |
 
-Each phase lasts ~2–3 s — deliberately long enough to point at and narrate on stage.
-De-escalation as the scooter recedes never produces a downgrade alert; the single
-`risk_clear` ends the episode cleanly.
+Each phase lasts ~2–3 s — deliberately long enough for a person to perceive and react to
+each step. De-escalation as the scooter recedes never produces a downgrade alert; the
+single `risk_clear` ends the episode cleanly.
 
 ---
 
-## 10. Tuning cheat-sheet
+## 10. Why these numbers were chosen
+
+The constants encode a simple safety model rather than arbitrary tuning. The reasoning
+behind each group:
+
+### 10.1 Distance bands — `24 / 14 / 7 m`
+
+The bands are sized so each one buys a pedestrian a comparable amount of _lead time_ at
+typical micromobility speeds (an e-scooter/bike at ~4–7 m/s, i.e. ~15–25 km/h):
+
+| Band            | Distance | Lead time at 4–7 m/s | Intent                                             |
+| --------------- | -------- | -------------------- | -------------------------------------------------- |
+| caution         | 24 m     | ~3.5–6 s             | "Be aware" — enough time to look up and locate it  |
+| warning         | 14 m     | ~2–3.5 s             | "Act now" — start moving out of the path           |
+| critical        | 7 m      | ~1–1.7 s             | "Last chance" — at/near human reaction-time floor  |
+
+They are spaced roughly geometrically (24 → 14 → 7, each step ≈ 1.7–2×) so successive
+rings add a similar increment of warning time instead of bunching up, and so the three
+risk-zone rings on the console are clearly distinguishable rather than nested tightly.
+7 m as the critical floor lines up with the point where, once inside it, a slow reaction
+leaves little room to avoid contact — which is why that band also triggers incident
+logging.
+
+### 10.2 TTC thresholds — `5 / 3 / 1.5 s`
+
+Distance alone under-reacts to a fast approach, so time-to-conflict escalates severity
+independently. The thresholds mirror well-known reaction-time landmarks:
+
+- **1.5 s (critical)** ≈ the practical floor of human perception-plus-reaction time; if
+  contact is under ~1.5 s away, there is essentially only time to flinch.
+- **3 s (warning)** ≈ the "act now" window commonly used as a minimum safe following gap.
+- **5 s (caution)** ≈ early-awareness horizon; far enough to be a heads-up, near enough
+  to matter.
+
+Because severity is `max(distance-band, TTC-band)`, a fast scooter still 20 m out but
+closing at high speed is correctly raised to warning/critical before it enters the tight
+distance rings.
+
+### 10.3 Gating constants — `MIN_VEHICLE_SPEED 1.5 m/s`, `CLOSING_EPSILON 0.3 m`
+
+- **`MIN_VEHICLE_SPEED_MPS = 1.5`** (~5.4 km/h) sits just above brisk walking pace. Below
+  it a "vehicle" is parked, idling, or drifting on GPS noise — not a dynamic threat — so
+  it is ignored. This is the single biggest false-alarm suppressor.
+- **`CLOSING_EPSILON_M = 0.3`** is the dead-band for the "is it closing?" test. Over one
+  0.5 s tick a vehicle genuinely closing at ~3 m/s moves ~1.5 m, far above 0.3 m, while
+  frame-to-frame GPS/positioning jitter is well under it. 0.3 m therefore separates real
+  approach from noise without adding perceptible lag; too small and the alert flickers on
+  jitter, too large and it reacts late.
+
+### 10.4 Score weights & normalization — `0.5 / 0.3 / 0.2` over `28 m / 8 s / 35 km/h`
+
+The 0–100 gauge blends three normalized components:
+
+- **Weights `0.5 distance · 0.3 TTC · 0.2 speed`.** Distance dominates because it is the
+  most reliable and interpretable signal; TTC is the second-strongest because it captures
+  the _dynamics_; raw speed is a minor kicker reflecting how hard a hit would be. They sum
+  to 1 so the raw score stays in 0–100.
+- **`DISTANCE_SCORE_RANGE_M = 28`** is set just beyond the 24 m caution band, so the
+  distance component is ~0 exactly when a vehicle is out of alert range and rises smoothly
+  as it crosses the rings.
+- **`TTC_SCORE_HORIZON_S = 8`** is a little beyond the 5 s caution TTC, so the TTC
+  component starts contributing slightly before the first alert would fire.
+- **`SPEED_SCORE_REF_KMH = 35`** is near the upper end of realistic e-scooter/bike speed,
+  so ordinary speeds map to a meaningful, non-saturated fraction of the gauge.
+
+The raw blend is then clamped into the current severity's band (§5) so the number can
+never disagree with the label.
+
+### 10.5 Timing constants — `LOOP 0.5 s`, `REFRESH 2.5 s`, `STALE 60 s`
+
+- **`LOOP_INTERVAL_SECONDS = 0.5`** matches the telemetry/emulation cadence: fast enough
+  for sub-second reaction, cheap enough to run every pair every tick.
+- **`REFRESH_INTERVAL_SECONDS = 2.5`** is the same-severity re-emit cadence — frequent
+  enough that the on-screen distance/TTC stay fresh, sparse enough to avoid a buzz stream.
+- **`STALE_DEVICE_SECONDS = 60`** drops devices (and their pair state) that have gone
+  silent for a minute, which both cleans up the scene and keeps hot state ephemeral for
+  privacy.
+
+### 10.6 Visualization scale — `METERS_TO_SCENE 0.85`
+
+The console's risk-zone rings are drawn at the engine's real thresholds so the picture
+cannot drift from the logic. On the 100-unit square scene (pedestrian anchored near the
+centre), `0.85` units per metre makes the 24 m caution ring ≈ 20 scene units in radius —
+large and legible, while still leaving the full ring inside the visible play area.
+
+---
+
+## 11. Tuning cheat-sheet
 
 All knobs live at the top of `risk_engine.py`:
 
@@ -199,6 +288,7 @@ All knobs live at the top of `risk_engine.py`:
 | `DISTANCE/TTC/SPEED` score refs       | 28 m / 8 s / 35 km/h | Gauge normalization                        |
 | `STALE_DEVICE_SECONDS`                | 60                   | Drop silent devices (and their pair state) |
 
-To make the escalation slower/faster for a room, change the emulator's speeds rather
-than these thresholds — the thresholds encode the _safety model_, the emulator controls
-the _pacing_ (see [`DEMO.md`](./DEMO.md)).
+To make the escalation slower or faster, change the scenario speeds/positions in
+`simulation_runner.py` (or `emulator.py`) rather than these thresholds — the thresholds
+encode the _safety model_, the scenario definitions control the _pacing_ (see
+[`DEMO.md`](./DEMO.md)).
