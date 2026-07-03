@@ -1,7 +1,9 @@
 import os
+from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from models import Base  # Імпортуємо наш Base з models.py
 
+load_dotenv()   # ← оцей рядок читає .env і кладе значення в os.environ
 # Читаємо URL бази з оточення. Якщо його немає - беремо дефолтний для локального Docker
 DATABASE_URL = os.getenv(
     "DATABASE_URL", 
