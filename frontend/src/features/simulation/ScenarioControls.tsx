@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { useSimulationControl } from "@/features/realtime/useSimulationControl";
 
 const phaseLabel: Record<string, string> = {
@@ -9,6 +11,7 @@ const phaseLabel: Record<string, string> = {
 
 export function ScenarioControls() {
   const { scenarios, status, isBusy, error, start, stop } = useSimulationControl();
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
   const activeScenarioId = status.running ? status.scenarioId : null;
 
   return (
@@ -17,7 +20,7 @@ export function ScenarioControls() {
         <div>
           <h2 className="text-xl font-bold">Demo scenarios</h2>
           <p className="mt-1 text-sm text-slate-300">
-            Drive the console straight from here — no terminal needed.
+            Pick a scenario, then press Start — no terminal needed.
           </p>
         </div>
         <div
@@ -41,15 +44,16 @@ export function ScenarioControls() {
 
         {scenarios.map((scenario) => {
           const isActive = scenario.id === activeScenarioId;
+          const isSelected = scenario.id === selectedScenarioId;
           return (
             <button
               key={scenario.id}
               type="button"
-              disabled={isBusy}
-              onClick={() => void start(scenario.id)}
-              className={`flex flex-col gap-1 rounded-2xl border p-4 text-left transition-colors disabled:opacity-60 ${
-                isActive
-                  ? "border-cyan-400/60 bg-cyan-950/50 text-cyan-50"
+              aria-pressed={isSelected}
+              onClick={() => setSelectedScenarioId(scenario.id)}
+              className={`flex flex-col gap-1 rounded-2xl border p-4 text-left transition-colors ${
+                isSelected
+                  ? "border-cyan-400/70 bg-cyan-950/50 text-cyan-50 ring-1 ring-cyan-400/60"
                   : "border-white/10 bg-slate-950/80 text-slate-100 hover:border-cyan-400/40 hover:bg-slate-900"
               }`}
             >
@@ -70,6 +74,18 @@ export function ScenarioControls() {
       <div className="mt-5 flex flex-wrap items-center gap-3">
         <button
           type="button"
+          disabled={isBusy || selectedScenarioId === null}
+          onClick={() => {
+            if (selectedScenarioId !== null) {
+              void start(selectedScenarioId);
+            }
+          }}
+          className="rounded-full border border-cyan-400/50 bg-cyan-500/20 px-6 py-2 text-sm font-semibold text-cyan-50 transition-colors hover:bg-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {status.running ? "Restart scenario" : "Start scenario"}
+        </button>
+        <button
+          type="button"
           disabled={isBusy || !status.running}
           onClick={() => void stop()}
           className="rounded-full border border-red-400/40 bg-red-950/60 px-5 py-2 text-sm font-semibold text-red-100 transition-colors hover:bg-red-900/60 disabled:cursor-not-allowed disabled:opacity-50"
@@ -77,7 +93,9 @@ export function ScenarioControls() {
           Stop scenario
         </button>
         <p className="text-xs text-slate-400">
-          Starting a scenario replaces any running one.
+          {selectedScenarioId === null
+            ? "Select a scenario to enable Start."
+            : "Starting replaces any running scenario."}
         </p>
         {error ? <p className="text-xs font-semibold text-red-300">{error}</p> : null}
       </div>

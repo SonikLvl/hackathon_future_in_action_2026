@@ -9,6 +9,9 @@ const TRAIL_LIMIT = 14;
 const BASE_SMOOTHING = 0.18;
 const METERS_TO_SCENE = 0.85; // 1m -> 0.85 scene units
 const PEDESTRIAN_ID = "pedestrian_1";
+// Scene-unit jump above which we snap instead of lerp (a device was respawned /
+// a new scenario started), so actors don't appear to be "dragged" across the map.
+const SNAP_DISTANCE = 22;
 
 type UseSimulationEngineInput = {
   activeAlert: BraceletAlert | null;
@@ -87,25 +90,36 @@ export function useSimulationEngine({ activeAlert, telemetryDevices }: UseSimula
         const id = device.deviceId;
         const existingActor = currentActors[id];
         const targetPosition = toScenePosition(device.lat, device.lon, anchorRef.current, center);
-        const nextPosition = existingActor
-          ? {
-              x: lerpAdaptive(existingActor.position.x, targetPosition.x),
-              y: lerpAdaptive(existingActor.position.y, targetPosition.y),
-            }
-          : targetPosition;
-        const velocity = existingActor
-          ? {
-              x: nextPosition.x - existingActor.position.x,
-              y: nextPosition.y - existingActor.position.y,
-            }
-          : { x: 0, y: 0 };
+
+        const jumpDistance = existingActor
+          ? Math.hypot(
+              targetPosition.x - existingActor.position.x,
+              targetPosition.y - existingActor.position.y,
+            )
+          : 0;
+        const isTeleport = existingActor != null && jumpDistance > SNAP_DISTANCE;
+
+        const nextPosition =
+          existingActor && !isTeleport
+            ? {
+                x: lerpAdaptive(existingActor.position.x, targetPosition.x),
+                y: lerpAdaptive(existingActor.position.y, targetPosition.y),
+              }
+            : targetPosition;
+        const velocity =
+          existingActor && !isTeleport
+            ? {
+                x: nextPosition.x - existingActor.position.x,
+                y: nextPosition.y - existingActor.position.y,
+              }
+            : { x: 0, y: 0 };
 
         const headingDeg =
           typeof device.azimuth === "number"
             ? device.azimuth
             : estimateHeadingDeg(nextPosition, center);
 
-        const existingTrail = existingActor?.trail ?? [];
+        const existingTrail = isTeleport ? [] : existingActor?.trail ?? [];
         const nextTrail =
           device.isPedestrian || (Math.abs(velocity.x) < 0.001 && Math.abs(velocity.y) < 0.001)
             ? existingTrail
