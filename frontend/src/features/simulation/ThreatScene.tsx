@@ -59,12 +59,43 @@ export function ThreatScene({ snapshot, ttcSeconds }: ThreatSceneProps) {
   const hiddenOtherVehiclesCount = Math.max(0, allOtherVehicles.length - visibleOtherVehicles.length);
   const liveDirectionLabel = getLiveDirectionLabel(snapshot);
 
+  const hasActiveThreat = snapshot.severity !== "safe";
+
+  // Threat arrow: a clean, centered vector from the primary vehicle toward the
+  // pedestrian, stopping just short of the safety ring, with a solid arrowhead.
+  // Only shown while there is a real (non-safe) threat.
+  const threatArrow = (() => {
+    if (!primaryVehicle || !hasActiveThreat) {
+      return null;
+    }
+    const from = primaryVehicle.position;
+    const dx = focusPoint.x - from.x;
+    const dy = focusPoint.y - from.y;
+    const length = Math.hypot(dx, dy) || 1;
+    const ux = dx / length;
+    const uy = dy / length;
+    const endGap = 6; // keep the arrowhead just outside the pedestrian marker
+    const tip = { x: focusPoint.x - ux * endGap, y: focusPoint.y - uy * endGap };
+    const headSize = 3.4;
+    const spread = 0.45;
+    const angle = Math.atan2(uy, ux);
+    const left = {
+      x: tip.x - headSize * Math.cos(angle - spread),
+      y: tip.y - headSize * Math.sin(angle - spread),
+    };
+    const right = {
+      x: tip.x - headSize * Math.cos(angle + spread),
+      y: tip.y - headSize * Math.sin(angle + spread),
+    };
+    return { from, tip, left, right };
+  })();
+
   return (
     <div className="mt-6 rounded-2xl border border-cyan-400/20 bg-gradient-to-br from-slate-950 via-slate-950 to-cyan-950/40 p-5">
       <p className="text-xs uppercase tracking-[0.25em] text-cyan-300">Live simulation area</p>
       <div className="mt-4 rounded-2xl border border-cyan-900/60 bg-slate-950 p-4">
         <div
-          className={`relative h-64 overflow-hidden rounded-xl border border-white/10 bg-gradient-to-b ${severitySceneGlowClassName[snapshot.severity]}`}
+          className={`relative aspect-square w-full overflow-hidden rounded-xl border border-white/10 bg-gradient-to-b ${severitySceneGlowClassName[snapshot.severity]}`}
         >
           <div className="absolute left-1/2 top-5 h-[78%] w-40 -translate-x-1/2 rounded-3xl border border-slate-600/60 bg-slate-900/70">
             <div className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 border-l border-dashed border-cyan-300/40" />
@@ -80,34 +111,23 @@ export function ThreatScene({ snapshot, ttcSeconds }: ThreatSceneProps) {
           </div>
 
           <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-            {visibleOtherVehicles.map((vehicle) => (
-              <polyline
-                key={`${vehicle.id}-trail`}
-                points={vehicle.trail.map((point) => `${point.x},${point.y}`).join(" ")}
-                fill="none"
-                stroke="rgba(148,163,184,0.28)"
-                strokeWidth="0.7"
-              />
-            ))}
-            {primaryVehicle ? (
-              <polyline
-                points={primaryVehicle.trail.map((point) => `${point.x},${point.y}`).join(" ")}
-                fill="none"
-                stroke="rgba(248,113,113,0.45)"
-                strokeWidth="1.1"
-              />
-            ) : null}
-
-            {primaryVehicle ? (
-              <line
-                x1={primaryVehicle.position.x}
-                y1={primaryVehicle.position.y}
-                x2={focusPoint.x}
-                y2={focusPoint.y}
-                stroke="rgba(248,113,113,0.75)"
-                strokeWidth="1.2"
-                strokeDasharray="3 2"
-              />
+            {threatArrow ? (
+              <>
+                <line
+                  x1={threatArrow.from.x}
+                  y1={threatArrow.from.y}
+                  x2={threatArrow.tip.x}
+                  y2={threatArrow.tip.y}
+                  stroke="rgba(248,113,113,0.9)"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+                <polygon
+                  points={`${threatArrow.tip.x},${threatArrow.tip.y} ${threatArrow.left.x},${threatArrow.left.y} ${threatArrow.right.x},${threatArrow.right.y}`}
+                  fill="rgba(248,113,113,0.95)"
+                />
+              </>
             ) : null}
           </svg>
 
@@ -165,6 +185,13 @@ export function ThreatScene({ snapshot, ttcSeconds }: ThreatSceneProps) {
               />
             );
           })}
+
+          {primaryVehicle && hasActiveThreat ? (
+            <div
+              className="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-red-100 bg-red-300"
+              style={{ left: `${primaryVehicle.position.x}%`, top: `${primaryVehicle.position.y}%` }}
+            />
+          ) : null}
 
           {snapshot.actors.map((actor) => (
             (actor.kind === "vehicle" &&
