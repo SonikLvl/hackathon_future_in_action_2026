@@ -68,7 +68,8 @@ function formatLastSeen(timestamp: number | null): string {
 }
 
 export function DemoPage() {
-  const { status, latestAlert, alertHistory, lastMessageAt } = useRiskAlertStream();
+  const { status, latestAlert, alertHistory, lastMessageAt, clearAlertHistory } =
+    useRiskAlertStream();
   const { devices: telemetryDevices } = useTelemetrySnapshot();
   const activeAlert = latestAlert;
   const feedItems = alertHistory.slice(0, 8);
@@ -182,10 +183,22 @@ export function DemoPage() {
           </div>
 
           <aside className="rounded-3xl border border-white/10 bg-slate-900/60 p-6 shadow-2xl shadow-black/30">
-            <h2 className="text-xl font-bold">Recent event timeline</h2>
-            <p className="mt-2 text-sm text-slate-300">
-              Latest backend alerts received by this operator console.
-            </p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-bold">Recent event timeline</h2>
+                <p className="mt-2 text-sm text-slate-300">
+                  Latest backend alerts received by this operator console.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={feedItems.length === 0}
+                onClick={clearAlertHistory}
+                className="shrink-0 rounded-full border border-white/15 bg-slate-950/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.15em] text-slate-200 transition-colors hover:border-cyan-400/40 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Clear history
+              </button>
+            </div>
 
             <div className="mt-5 space-y-3">
               {feedItems.length === 0 ? (

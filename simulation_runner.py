@@ -103,6 +103,21 @@ def _scenario_side_crossing() -> tuple[list[SimActor], int]:
     return [_pedestrian(0.6), bike], 30
 
 
+def _scenario_from_behind() -> tuple[list[SimActor], int]:
+    """Scooter overtaking from behind (south) and passing — exercises 'back' direction."""
+    scooter = SimActor(
+        device_id="scooter_1",
+        is_pedestrian=False,
+        lat=BASE_LAT - 40 * LAT_PER_METER,  # ~40 m behind (south)
+        lon=BASE_LON + 1.2 * LON_PER_METER_AT_50_LAT,  # slight offset to pass, not hit
+        speed_mps=5.0,
+        azimuth_deg=0.0,
+        dlat_mps=5.0,  # heading north, catching up to the pedestrian
+        dlon_mps=0.0,
+    )
+    return [_pedestrian(1.2), scooter], 30
+
+
 def _scenario_busy_street() -> tuple[list[SimActor], int]:
     """Two vehicles at once: head-on scooter + crossing bike (multi-threat handling)."""
     scooter = SimActor(
@@ -148,6 +163,12 @@ SCENARIOS: dict[str, ScenarioDef] = {
         name="Bike crossing from the side",
         description="A bike crosses the pedestrian's path from the right side.",
         build=_scenario_side_crossing,
+    ),
+    "from_behind": ScenarioDef(
+        id="from_behind",
+        name="Scooter overtaking from behind",
+        description="A faster scooter catches up from behind and passes the pedestrian.",
+        build=_scenario_from_behind,
     ),
     "busy_street": ScenarioDef(
         id="busy_street",
