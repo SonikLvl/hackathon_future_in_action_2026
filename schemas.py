@@ -50,6 +50,28 @@ class ActiveDevicesResponse(BaseModel):
     devices: list[ActiveDeviceState]
 
 
+# ---------- Схеми для вбудованого симулятора сценаріїв ----------
+class ScenarioInfo(BaseModel):
+    id: str
+    name: str
+    description: str
+
+
+class ScenariosResponse(BaseModel):
+    scenarios: list[ScenarioInfo]
+
+
+class SimulationStatus(BaseModel):
+    running: bool
+    scenarioId: Optional[str] = None
+    phase: str = "idle"
+    elapsedSeconds: float = 0.0
+
+
+class StartSimulationRequest(BaseModel):
+    scenarioId: str = Field(..., description="ID сценарію з переліку /api/simulation/scenarios")
+
+
 AlertSeverity = Literal["safe", "caution", "warning", "critical"]
 AlertDirection = Literal["front", "back", "left", "right", "unknown"]
 EventType = Literal["risk_alert", "risk_clear"]

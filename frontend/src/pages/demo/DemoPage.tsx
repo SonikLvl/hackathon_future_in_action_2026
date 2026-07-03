@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
-
 import type { AlertDirection, AlertSeverity, BraceletConnectionStatus } from "@/features/bracelet/types";
 import { useRiskAlertStream } from "@/features/realtime/useRiskAlertStream";
 import { useTelemetrySnapshot } from "@/features/realtime/useTelemetrySnapshot";
+import { ScenarioControls } from "@/features/simulation/ScenarioControls";
 import { ThreatScene } from "@/features/simulation/ThreatScene";
 import { useSimulationEngine } from "@/features/simulation/useSimulationEngine";
 
@@ -18,22 +17,6 @@ const connectionClassName: Record<BraceletConnectionStatus, string> = {
   connected: "border-emerald-500/40 bg-emerald-950/60 text-emerald-100",
   reconnecting: "border-amber-500/40 bg-amber-950/60 text-amber-100",
   disconnected: "border-slate-600 bg-slate-900 text-slate-200",
-};
-
-type DemoScenarioPhase = "waiting" | "running" | "stabilizing" | "finished";
-
-const phaseLabel: Record<DemoScenarioPhase, string> = {
-  waiting: "Scenario waiting",
-  running: "Scenario running",
-  stabilizing: "Stabilizing",
-  finished: "Scenario finished",
-};
-
-const phaseClassName: Record<DemoScenarioPhase, string> = {
-  waiting: "border-slate-600 bg-slate-900 text-slate-200",
-  running: "border-cyan-500/40 bg-cyan-950/60 text-cyan-100",
-  stabilizing: "border-amber-500/40 bg-amber-950/60 text-amber-100",
-  finished: "border-emerald-500/40 bg-emerald-950/60 text-emerald-100",
 };
 
 const severityBadgeClassName: Record<AlertSeverity, string> = {
@@ -90,38 +73,6 @@ export function DemoPage() {
   const activeAlert = latestAlert;
   const feedItems = alertHistory.slice(0, 8);
   const simulationSnapshot = useSimulationEngine({ activeAlert, telemetryDevices });
-  const [scenarioPhase, setScenarioPhase] = useState<DemoScenarioPhase>("waiting");
-  const [lastMovementAt, setLastMovementAt] = useState<number | null>(null);
-
-  useEffect(() => {
-    const now = Date.now();
-    const vehicleDevices = telemetryDevices.filter((device) => !device.isPedestrian);
-    const hasMovingVehicle = vehicleDevices.some((device) => device.speed > 0.2);
-
-    if (vehicleDevices.length === 0) {
-      setScenarioPhase("waiting");
-      return;
-    }
-
-    if (hasMovingVehicle) {
-      setLastMovementAt(now);
-      setScenarioPhase("running");
-      return;
-    }
-
-    if (lastMovementAt === null) {
-      setScenarioPhase("finished");
-      return;
-    }
-
-    const idleMs = now - lastMovementAt;
-    if (idleMs < 3500) {
-      setScenarioPhase("stabilizing");
-      return;
-    }
-
-    setScenarioPhase("finished");
-  }, [lastMovementAt, telemetryDevices]);
 
   return (
     <main className="min-h-screen bg-slate-950 px-6 py-8 text-slate-50 lg:px-8">
@@ -153,13 +104,10 @@ export function DemoPage() {
             <p>
               Feed size: <span className="font-semibold text-slate-100">{feedItems.length}</span>
             </p>
-            <div
-              className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] ${phaseClassName[scenarioPhase]}`}
-            >
-              {phaseLabel[scenarioPhase]}
-            </div>
           </div>
         </header>
+
+        <ScenarioControls />
 
         <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
           <div className="rounded-3xl border border-white/10 bg-slate-900/60 p-6 shadow-2xl shadow-black/30">
