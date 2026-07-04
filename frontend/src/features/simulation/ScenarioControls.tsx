@@ -3,10 +3,10 @@ import { useState } from "react";
 import { useSimulationControl } from "@/features/realtime/useSimulationControl";
 
 const phaseLabel: Record<string, string> = {
-  idle: "Idle",
-  running: "Running",
-  stabilizing: "Stabilizing",
-  finished: "Finished",
+  idle: "Очікування",
+  running: "Виконується",
+  stabilizing: "Стабілізація",
+  finished: "Завершено",
 };
 
 export function ScenarioControls() {
@@ -18,9 +18,9 @@ export function ScenarioControls() {
     <section className="rounded-3xl border border-white/10 bg-slate-900/60 p-6 shadow-2xl shadow-black/30">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold">Demo scenarios</h2>
+          <h2 className="text-xl font-bold">Демо-сценарії</h2>
           <p className="mt-1 text-sm text-slate-300">
-            Pick a scenario, then press Start — no terminal needed.
+            Оберіть сценарій і натисніть Старт — без термінала.
           </p>
         </div>
         <div
@@ -38,7 +38,7 @@ export function ScenarioControls() {
       <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {scenarios.length === 0 ? (
           <p className="text-sm text-slate-400">
-            No scenarios available. Is the backend running?
+            Немає доступних сценаріїв. Перевір, чи працює бекенд.
           </p>
         ) : null}
 
@@ -61,7 +61,7 @@ export function ScenarioControls() {
                 {scenario.name}
                 {isActive ? (
                   <span className="rounded-full bg-cyan-400/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.15em] text-cyan-100">
-                    Live
+                    Активно
                   </span>
                 ) : null}
               </span>
@@ -82,7 +82,7 @@ export function ScenarioControls() {
           }}
           className="rounded-full border border-cyan-400/50 bg-cyan-500/20 px-6 py-2 text-sm font-semibold text-cyan-50 transition-colors hover:bg-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {status.running ? "Restart scenario" : "Start scenario"}
+          {status.running ? "Перезапустити сценарій" : "Запустити сценарій"}
         </button>
         <button
           type="button"
@@ -90,12 +90,12 @@ export function ScenarioControls() {
           onClick={() => void stop()}
           className="rounded-full border border-red-400/40 bg-red-950/60 px-5 py-2 text-sm font-semibold text-red-100 transition-colors hover:bg-red-900/60 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Stop scenario
+          Зупинити сценарій
         </button>
         <p className="text-xs text-slate-400">
           {selectedScenarioId === null
-            ? "Select a scenario to enable Start."
-            : "Starting replaces any running scenario."}
+            ? "Оберіть сценарій, щоб активувати запуск."
+            : "Запуск замінить поточний сценарій."}
         </p>
         {error ? <p className="text-xs font-semibold text-red-300">{error}</p> : null}
       </div>

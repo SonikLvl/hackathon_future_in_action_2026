@@ -13,8 +13,6 @@ import type { SimulationActor, SimulationSnapshot } from "@/features/simulation/
 const TRAIL_LIMIT = 14;
 const BASE_SMOOTHING = 0.18;
 const PEDESTRIAN_ID = "pedestrian_1";
-// Scene-unit jump above which we snap instead of lerp (a device was respawned /
-// a new scenario started), so actors don't appear to be "dragged" across the map.
 const SNAP_DISTANCE = 22;
 
 type UseSimulationEngineInput = {
@@ -27,7 +25,7 @@ function createPedestrianActor(): SimulationActor {
   return {
     id: PEDESTRIAN_ID,
     kind: "pedestrian",
-    label: "Pedestrian",
+    label: "Пішохід",
     position: center,
     velocity: { x: 0, y: 0 },
     headingDeg: 0,
@@ -110,6 +108,7 @@ export function useSimulationEngine({ activeAlert, telemetryDevices }: UseSimula
                 y: lerpAdaptive(existingActor.position.y, targetPosition.y),
               }
             : targetPosition;
+
         const velocity =
           existingActor && !isTeleport
             ? {
@@ -132,7 +131,7 @@ export function useSimulationEngine({ activeAlert, telemetryDevices }: UseSimula
         nextActors[id] = {
           id,
           kind: device.isPedestrian ? "pedestrian" : "vehicle",
-          label: device.isPedestrian ? "Pedestrian" : "Vehicle",
+          label: device.isPedestrian ? "Пішохід" : "Транспорт",
           position: nextPosition,
           velocity,
           headingDeg,

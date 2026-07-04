@@ -67,7 +67,7 @@ function parseRiskAlertEvent(payload: UnknownRecord): RiskAlertEvent | null {
     timeToConflictSeconds: parseNumber(payload.timeToConflictSeconds),
     vehicleType: parseOptionalString(payload.vehicleType),
     speedKmh: parseNumber(payload.speedKmh) ?? 0,
-    reason: typeof payload.reason === "string" ? payload.reason : "Vehicle risk detected nearby.",
+    reason: typeof payload.reason === "string" ? payload.reason : "Небезпеку виявлено поруч.",
     vibrationPattern: parseVibrationPattern(payload.vibrationPattern),
   };
 }
@@ -91,7 +91,7 @@ export function tryParseRiskClear(rawMessage: string): RiskClearSignal | null {
       };
     }
   } catch {
-    // Not JSON or not a clear event; fall through to alert parsing.
+    // Це не JSON або не подія "risk_clear" — переходимо до парсингу як risk_alert.
   }
 
   return null;
@@ -142,7 +142,7 @@ export function parseBraceletMessage(rawMessage: string): BraceletAlert {
         };
       }
 
-      const message = typeof parsed.message === "string" ? parsed.message : "Danger nearby. Look around.";
+      const message = typeof parsed.message === "string" ? parsed.message : "Небезпека поруч. Озирнись.";
 
       return {
         severity: parseSeverity(parsed.severity),
@@ -160,7 +160,7 @@ export function parseBraceletMessage(rawMessage: string): BraceletAlert {
       };
     }
   } catch {
-    // Current backend sends plain text, so this is expected for now.
+    // Поточний бекенд надсилає простий текст, тож це очікувано на цьому етапі.
   }
 
   return {

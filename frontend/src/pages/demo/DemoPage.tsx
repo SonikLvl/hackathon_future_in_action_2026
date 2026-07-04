@@ -6,10 +6,10 @@ import { ThreatScene } from "@/features/simulation/ThreatScene";
 import { useSimulationEngine } from "@/features/simulation/useSimulationEngine";
 
 const connectionLabel: Record<BraceletConnectionStatus, string> = {
-  connecting: "Connecting",
-  connected: "Live",
-  reconnecting: "Reconnecting",
-  disconnected: "Disconnected",
+  connecting: "З'єднання...",
+  connected: "Наживо",
+  reconnecting: "Перепідключення...",
+  disconnected: "Немає з'єднання",
 };
 
 const connectionClassName: Record<BraceletConnectionStatus, string> = {
@@ -27,44 +27,44 @@ const severityBadgeClassName: Record<AlertSeverity, string> = {
 };
 
 const severityLabel: Record<AlertSeverity, string> = {
-  safe: "Safe",
-  caution: "Caution",
-  warning: "Warning",
-  critical: "Critical",
+  safe: "Безпечно",
+  caution: "Обережно",
+  warning: "Увага",
+  critical: "Критично",
 };
 
 const directionLabel: Record<AlertDirection, string> = {
-  front: "Front",
-  back: "Behind",
-  left: "Left",
-  right: "Right",
-  unknown: "Nearby",
+  front: "Спереду",
+  back: "Позаду",
+  left: "Ліворуч",
+  right: "Праворуч",
+  unknown: "Поблизу",
 };
 
 function formatMetric(value: number | null, suffix = ""): string {
   if (value === null) {
-    return "n/a";
+    return "н/д";
   }
   return `${value.toFixed(1)}${suffix}`;
 }
 
 function formatLastSeen(timestamp: number | null): string {
   if (timestamp === null) {
-    return "No events yet";
+    return "Подій ще немає";
   }
 
   const diffMs = Date.now() - timestamp;
   if (diffMs < 1000) {
-    return "just now";
+    return "щойно";
   }
 
   const seconds = Math.floor(diffMs / 1000);
   if (seconds < 60) {
-    return `${seconds}s ago`;
+    return `${seconds}с тому`;
   }
 
   const minutes = Math.floor(seconds / 60);
-  return `${minutes}m ago`;
+  return `${minutes}хв тому`;
 }
 
 export function DemoPage() {
@@ -81,7 +81,7 @@ export function DemoPage() {
         <header className="flex flex-col gap-4 rounded-3xl border border-white/10 bg-slate-900/70 p-6 backdrop-blur-xl">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs font-semibold uppercase tracking-[0.35em] text-cyan-300">
-              VARTA Safety Command Console
+              Командна консоль безпеки VARTA
             </p>
             <div
               className={`rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] ${connectionClassName[status]}`}
@@ -91,19 +91,20 @@ export function DemoPage() {
           </div>
 
           <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
-            Real-time vehicle threat awareness
+            Виявлення транспортних загроз у реальному часі
           </h1>
 
           <p className="max-w-3xl text-slate-300">
-            The console listens to live backend `risk_alert` events and highlights the latest
-            threat for operators. Keep `/bracelet` open in parallel to verify synchronized alerts.
+            Консоль слухає події `risk_alert` з бекенду в реальному часі й показує оператору
+            останню загрозу. Тримай `/bracelet` відкритою паралельно, щоб перевірити синхронність
+            сповіщень.
           </p>
           <div className="flex flex-wrap items-center gap-5 text-sm text-slate-300">
             <p>
-              Last event: <span className="font-semibold text-slate-100">{formatLastSeen(lastMessageAt)}</span>
+              Остання подія: <span className="font-semibold text-slate-100">{formatLastSeen(lastMessageAt)}</span>
             </p>
             <p>
-              Feed size: <span className="font-semibold text-slate-100">{feedItems.length}</span>
+              Розмір стрічки: <span className="font-semibold text-slate-100">{feedItems.length}</span>
             </p>
           </div>
         </header>
@@ -114,64 +115,64 @@ export function DemoPage() {
           <div className="rounded-3xl border border-white/10 bg-slate-900/60 p-6 shadow-2xl shadow-black/30">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Active threat</p>
+                <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Активна загроза</p>
                 <h2 className="mt-2 text-2xl font-bold">
-                  {activeAlert ? activeAlert.message : "No active risk event"}
+                  {activeAlert ? activeAlert.message : "Немає активної загрози"}
                 </h2>
                 <p className="mt-2 text-sm text-slate-300">
                   {activeAlert?.reason ??
-                    "Waiting for backend event stream. Start emulator telemetry to trigger alerts."}
+                    "Очікування потоку подій з бекенду. Запусти телеметрію емулятора, щоб отримати сповіщення."}
                 </p>
               </div>
 
               <div
                 className={`rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] ${activeAlert ? severityBadgeClassName[activeAlert.severity] : "border-slate-700 bg-slate-900 text-slate-300"}`}
               >
-                {activeAlert ? severityLabel[activeAlert.severity] : "Idle"}
+                {activeAlert ? severityLabel[activeAlert.severity] : "Очікування"}
               </div>
             </div>
 
             <p className="mt-2 text-xs uppercase tracking-[0.14em] text-slate-400">
-              Severity reflects the current primary threat vehicle:{" "}
-              <span className="font-semibold text-slate-200">{activeAlert?.vehicleId ?? "n/a"}</span>
+              Рівень небезпеки визначається за поточним основним транспортом-загрозою:{" "}
+              <span className="font-semibold text-slate-200">{activeAlert?.vehicleId ?? "н/д"}</span>
             </p>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div className="rounded-2xl border border-white/10 bg-slate-950/80 p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Risk score</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Рівень ризику</p>
                 <p className="mt-2 text-3xl font-bold text-white">
                   {activeAlert?.riskScore ?? "—"}
                 </p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-slate-950/80 p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Distance</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Відстань</p>
                 <p className="mt-2 text-3xl font-bold text-white">
-                  {formatMetric(activeAlert?.distanceMeters ?? null, " m")}
+                  {formatMetric(activeAlert?.distanceMeters ?? null, " м")}
                 </p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-slate-950/80 p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Time to conflict</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Час до зіткнення</p>
                 <p className="mt-2 text-3xl font-bold text-white">
-                  {formatMetric(activeAlert?.timeToConflictSeconds ?? null, " s")}
+                  {formatMetric(activeAlert?.timeToConflictSeconds ?? null, " с")}
                 </p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-slate-950/80 p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Direction</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Напрямок</p>
                 <p className="mt-2 text-xl font-semibold text-white">
-                  {activeAlert ? directionLabel[activeAlert.direction] : "n/a"}
+                  {activeAlert ? directionLabel[activeAlert.direction] : "н/д"}
                 </p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-slate-950/80 p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Vehicle</p>
-                <p className="mt-2 text-xl font-semibold text-white">{activeAlert?.vehicleId ?? "n/a"}</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Транспорт</p>
+                <p className="mt-2 text-xl font-semibold text-white">{activeAlert?.vehicleId ?? "н/д"}</p>
                 <p className="mt-1 text-xs uppercase tracking-[0.15em] text-slate-400">
-                  {activeAlert?.vehicleType ?? "unknown"}
+                  {activeAlert?.vehicleType ?? "невідомо"}
                 </p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-slate-950/80 p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Speed</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Швидкість</p>
                 <p className="mt-2 text-xl font-semibold text-white">
-                  {formatMetric(activeAlert?.speedKmh ?? null, " km/h")}
+                  {formatMetric(activeAlert?.speedKmh ?? null, " км/год")}
                 </p>
               </div>
             </div>
@@ -185,9 +186,9 @@ export function DemoPage() {
           <aside className="rounded-3xl border border-white/10 bg-slate-900/60 p-6 shadow-2xl shadow-black/30">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-xl font-bold">Recent event timeline</h2>
+                <h2 className="text-xl font-bold">Історія останніх подій</h2>
                 <p className="mt-2 text-sm text-slate-300">
-                  Latest backend alerts received by this operator console.
+                  Останні сповіщення з бекенду, отримані цією консоллю оператора.
                 </p>
               </div>
               <button
@@ -196,14 +197,14 @@ export function DemoPage() {
                 onClick={clearAlertHistory}
                 className="shrink-0 rounded-full border border-white/15 bg-slate-950/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.15em] text-slate-200 transition-colors hover:border-cyan-400/40 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                Clear history
+                Очистити історію
               </button>
             </div>
 
             <div className="mt-5 space-y-3">
               {feedItems.length === 0 ? (
                 <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4 text-sm text-slate-400">
-                  Waiting for realtime events. Start telemetry emulator to populate the feed.
+                  Очікування подій у реальному часі. Запусти емулятор телеметрії, щоб наповнити стрічку.
                 </div>
               ) : null}
 
@@ -222,25 +223,25 @@ export function DemoPage() {
                   </div>
 
                   <p className="mt-3 font-semibold text-slate-100">{event.message}</p>
-                  <p className="mt-1 text-sm text-slate-300">{event.reason ?? "No reason provided."}</p>
+                  <p className="mt-1 text-sm text-slate-300">{event.reason ?? "Причину не вказано."}</p>
 
                   <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-300">
-                    <p>Direction: {directionLabel[event.direction]}</p>
-                    <p>Score: {event.riskScore ?? "n/a"}</p>
-                    <p>Distance: {formatMetric(event.distanceMeters, " m")}</p>
-                    <p>TTC: {formatMetric(event.timeToConflictSeconds, " s")}</p>
-                    <p>Vehicle: {event.vehicleId ?? "n/a"}</p>
-                    <p>Speed: {formatMetric(event.speedKmh ?? null, " km/h")}</p>
+                    <p>Напрямок: {directionLabel[event.direction]}</p>
+                    <p>Оцінка: {event.riskScore ?? "н/д"}</p>
+                    <p>Відстань: {formatMetric(event.distanceMeters, " м")}</p>
+                    <p>До зіткнення: {formatMetric(event.timeToConflictSeconds, " с")}</p>
+                    <p>Транспорт: {event.vehicleId ?? "н/д"}</p>
+                    <p>Швидкість: {formatMetric(event.speedKmh ?? null, " км/год")}</p>
                   </div>
                 </article>
               ))}
             </div>
 
             <div className="mt-6 rounded-2xl border border-cyan-400/20 bg-cyan-950/40 p-4 text-cyan-50">
-              <p className="font-semibold">Operator note</p>
+              <p className="font-semibold">Примітка для оператора</p>
               <p className="mt-2 text-sm leading-6 text-cyan-100">
-                Open `/bracelet` in parallel. Both views should react to the same event stream from
-                `/ws/pedestrian_1`.
+                Відкрий `/bracelet` паралельно. Обидва екрани мають реагувати на той самий потік
+                подій з `/ws/pedestrian_1`.
               </p>
             </div>
           </aside>

@@ -1,13 +1,13 @@
 import { useEffect } from "react";
 
-import type { AlertDirection, AlertSeverity } from "@/features/bracelet/types";
+import type { AlertDirection, AlertSeverity, BraceletConnectionStatus } from "@/features/bracelet/types";
 import { useBraceletSocket } from "@/features/bracelet/useBraceletSocket";
 
 const severityTitle: Record<AlertSeverity, string> = {
-  safe: "Safe",
-  caution: "Caution",
-  warning: "Warning",
-  critical: "Critical alert",
+  safe: "Безпечно",
+  caution: "Обережно",
+  warning: "Увага",
+  critical: "Критична загроза",
 };
 
 const severityClassName: Record<AlertSeverity, string> = {
@@ -18,11 +18,18 @@ const severityClassName: Record<AlertSeverity, string> = {
 };
 
 const directionLabel: Record<AlertDirection, string> = {
-  front: "Front",
-  back: "Behind",
-  left: "Left",
-  right: "Right",
-  unknown: "Nearby",
+  front: "Спереду",
+  back: "Позаду",
+  left: "Ліворуч",
+  right: "Праворуч",
+  unknown: "Поблизу",
+};
+
+const connectionStatusLabel: Record<BraceletConnectionStatus, string> = {
+  connecting: "З'єднання...",
+  connected: "Підключено",
+  reconnecting: "Перепідключення...",
+  disconnected: "Немає з'єднання",
 };
 
 export function BraceletPage() {
@@ -35,12 +42,12 @@ export function BraceletPage() {
   );
   const distanceText =
     alert?.distanceMeters !== null && alert?.distanceMeters !== undefined
-      ? `${alert.distanceMeters.toFixed(1)} m`
-      : "Distance n/a";
+      ? `${alert.distanceMeters.toFixed(1)} м`
+      : "Відстань н/д";
   const ttcText =
     alert?.timeToConflictSeconds !== null && alert?.timeToConflictSeconds !== undefined
-      ? `${alert.timeToConflictSeconds.toFixed(1)} s to conflict`
-      : "TTC n/a";
+      ? `${alert.timeToConflictSeconds.toFixed(1)} с до зіткнення`
+      : "Час до зіткнення н/д";
 
   useEffect(() => {
     if (!alert) {
@@ -62,18 +69,18 @@ export function BraceletPage() {
         <p className="text-sm uppercase tracking-[0.3em] opacity-75">VARTA</p>
 
         <div className="mt-8 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm">
-          WebSocket: {status}
+          З'єднання: {connectionStatusLabel[status]}
         </div>
 
         <div className="mt-10">
           <p className="text-sm uppercase tracking-[0.25em] opacity-70">
-            {alert ? directionLabel[alert.direction] : "Monitoring"}
+            {alert ? directionLabel[alert.direction] : "Спостереження"}
           </p>
 
           <h1 className="mt-4 text-5xl font-bold tracking-tight">{severityTitle[severity]}</h1>
 
           <p className="mt-6 text-xl leading-relaxed">
-            {alert?.message ?? "Bracelet prototype is waiting for alerts."}
+            {alert?.message ?? "Прототип браслета очікує на сповіщення."}
           </p>
 
           {hasMetrics ? (
@@ -89,12 +96,12 @@ export function BraceletPage() {
             type="button"
             onClick={clearAlert}
           >
-            Clear alert
+            Приховати сповіщення
           </button>
         ) : null}
 
         <p className="mt-10 text-xs uppercase tracking-[0.2em] opacity-60">
-          Phone bracelet prototype
+          Прототип браслета для телефону
         </p>
       </section>
     </main>

@@ -11,7 +11,7 @@ function getErrorMessage(error: unknown): string {
     return error.message;
   }
 
-  return "Unknown scenario error";
+  return "Невідома помилка сценарію";
 }
 
 export function useScenarioRunner() {
