@@ -200,14 +200,14 @@ def compute_risk_score(
 def infer_vehicle_type(vehicle_id: str) -> str:
     normalized = vehicle_id.lower()
     if "car" in normalized:
-        return "car"
+        return "автомобіль"
     if "motor" in normalized:
-        return "motorcycle"
+        return "мотоцикл"
     if "bike" in normalized:
-        return "bicycle"
+        return "велосипед"
     if "scooter" in normalized:
-        return "scooter"
-    return "unknown"
+        return "самокат"
+    return "невідомо"
 
 
 def get_vibration_pattern(severity: AlertSeverity) -> list[int]:
@@ -236,10 +236,10 @@ def build_alert_event(
     ttc_text = f"{ttc_s}с" if ttc_s is not None else "невідомо"
     message = f"УВАГА! Транспорт наближається {direction_str} ({round(distance_m)} м)"
     reason = (
-        f"Vehicle approaching from {direction_code}; "
-        f"distance {round(distance_m, 1)}m; "
-        f"speed {speed_kmh} km/h; "
-        f"estimated conflict in {ttc_text}."
+        f"Транспорт наближається {direction_str}; "
+        f"дистанція {round(distance_m, 1)} м; "
+        f"швидкість {speed_kmh} км/год; "
+        f"орієнтовний час до зіткнення: {ttc_text}."
     )
     return RiskAlertEvent(
         timestamp=datetime.now(UTC).isoformat().replace("+00:00", "Z"),

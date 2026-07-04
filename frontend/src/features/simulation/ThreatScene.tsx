@@ -11,7 +11,7 @@ const severitySceneGlowClassName: Record<AlertSeverity, string> = {
 
 function formatMetric(value: number | null, suffix = ""): string {
   if (value === null) {
-    return "n/a";
+    return "н/д";
   }
   return `${value.toFixed(1)}${suffix}`;
 }
@@ -68,9 +68,9 @@ export function ThreatScene({ snapshot, ttcSeconds }: ThreatSceneProps) {
     { key: "critical", radius: zoneRadii.critical, stroke: "rgba(248,113,113,0.6)", meters: 7 },
   ];
 
-  // Threat arrow: a clean, centered vector from the primary vehicle toward the
-  // pedestrian, stopping just short of the safety ring, with a solid arrowhead.
-  // Only shown while there is a real (non-safe) threat.
+  // Стрілка загрози: чіткий, відцентрований вектор від основного транспорту
+  // до пішохода, що зупиняється трохи не доходячи до кільця безпеки, з суцільним вістрям.
+  // Показується лише поки є реальна (не safe) загроза.
   const threatArrow = (() => {
     if (!primaryVehicle || !hasActiveThreat) {
       return null;
@@ -81,7 +81,7 @@ export function ThreatScene({ snapshot, ttcSeconds }: ThreatSceneProps) {
     const length = Math.hypot(dx, dy) || 1;
     const ux = dx / length;
     const uy = dy / length;
-    const endGap = 3.2; // stop just outside the pedestrian marker
+    const endGap = 3.2; // зупинитись трохи не доходячи до маркера пішохода
     const tip = { x: focusPoint.x - ux * endGap, y: focusPoint.y - uy * endGap };
     const headSize = 3.4;
     const spread = 0.45;
@@ -205,7 +205,7 @@ export function ThreatScene({ snapshot, ttcSeconds }: ThreatSceneProps) {
               className="absolute -translate-x-1/2 rounded-full border border-white/15 bg-slate-900/80 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-200"
               style={{ left: `${actor.position.x}%`, top: `${Math.max(4, actor.position.y - 7)}%` }}
             >
-              {actor.kind === "pedestrian" ? "Pedestrian" : actor.id}
+              {actor.kind === "pedestrian" ? "Пішохід" : actor.id}
             </div>
               )
           ))}
@@ -220,7 +220,7 @@ export function ThreatScene({ snapshot, ttcSeconds }: ThreatSceneProps) {
           </div>
           <div className="absolute right-4 top-4 flex flex-col items-end gap-2">
             <div className="rounded-full border border-white/20 bg-slate-900/80 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-200">
-              TTC {formatMetric(ttcSeconds, "s")}
+              До зіткнення: {formatMetric(ttcSeconds, "с")}
             </div>
             <div className="rounded-full border border-white/20 bg-slate-900/85 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-200">
               Інший трафік: {visibleOtherVehicles.length}

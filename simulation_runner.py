@@ -154,26 +154,26 @@ class ScenarioDef:
 SCENARIOS: dict[str, ScenarioDef] = {
     "head_on": ScenarioDef(
         id="head_on",
-        name="Scooter head-on",
-        description="A scooter approaches from the front. Watch caution → warning → critical → clear.",
+        name="Самокат зустрічним курсом",
+        description="Самокат наближається спереду. Спостерігай перехід обережно → увага → критично → безпечно.",
         build=_scenario_head_on,
     ),
     "side_crossing": ScenarioDef(
         id="side_crossing",
-        name="Bike crossing from the side",
-        description="A bike crosses the pedestrian's path from the right side.",
+        name="Велосипед перетинає збоку",
+        description="Велосипед перетинає шлях пішохода справа.",
         build=_scenario_side_crossing,
     ),
     "from_behind": ScenarioDef(
         id="from_behind",
-        name="Scooter overtaking from behind",
-        description="A faster scooter catches up from behind and passes the pedestrian.",
+        name="Самокат обганяє ззаду",
+        description="Швидший самокат наздоганяє пішохода ззаду і обганяє його.",
         build=_scenario_from_behind,
     ),
     "busy_street": ScenarioDef(
         id="busy_street",
-        name="Busy street (scooter + bike)",
-        description="Two vehicles at once — the console highlights the primary threat.",
+        name="Жвава вулиця (самокат + велосипед)",
+        description="Два транспортні засоби одночасно — консоль виділяє основну загрозу.",
         build=_scenario_busy_street,
     ),
 }
