@@ -22,6 +22,25 @@
   box-sizing: border-box;
 }
 
+/*
+ * High-resolution scaling. The UI is built on rem units (typography, spacing, container
+ * widths, the device mockup), so bumping the root font-size on very wide CSS viewports
+ * scales the whole app up proportionally instead of leaving a tiny strip of content in
+ * the middle of a 4K display. These thresholds use CSS pixels, so displays that the OS
+ * already scales down (e.g. a 4K panel rendered at 1920 CSS px) are unaffected.
+ */
+@media (min-width: 2560px) {
+  :root {
+    font-size: 20px;
+  }
+}
+
+@media (min-width: 3840px) {
+  :root {
+    font-size: 26px;
+  }
+}
+
 body {
   min-width: 320px;
   min-height: 100vh;
@@ -59,59 +78,4 @@ select {
 
 .bracelet-vibrating {
   animation: bracelet-vibration 120ms linear 8;
-}
-
-@keyframes simulation-impact-pulse {
-  0% {
-    transform: translate(-50%, -50%) scale(0.7);
-    opacity: 0.9;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(2.2);
-    opacity: 0;
-  }
-}
-
-@keyframes simulation-scanline {
-  0% {
-    transform: translateY(-100%);
-    opacity: 0;
-  }
-  20% {
-    opacity: 0.35;
-  }
-  100% {
-    transform: translateY(250%);
-    opacity: 0;
-  }
-}
-
-@keyframes simulation-vehicle {
-  0% {
-    transform: translate(-50%, -50%) scale(1);
-  }
-  50% {
-    transform: translate(-50%, -52%) scale(1.03);
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(1);
-  }
-}
-
-.simulation-impact-pulse {
-  animation: simulation-impact-pulse 1.8s ease-out infinite;
-}
-
-.simulation-scanline {
-  background: linear-gradient(
-    to bottom,
-    rgba(34, 211, 238, 0),
-    rgba(34, 211, 238, 0.4),
-    rgba(34, 211, 238, 0)
-  );
-  animation: simulation-scanline 4s linear infinite;
-}
-
-.simulation-vehicle {
-  animation: simulation-vehicle 1.6s ease-in-out infinite;
 }
