@@ -32,7 +32,16 @@ const connectionStatusLabel: Record<BraceletConnectionStatus, string> = {
   disconnected: "Немає з'єднання",
 };
 
-export function BraceletPage() {
+type BraceletPageProps = {
+  /**
+   * When embedded (e.g. inside the device mockup on `/bracelet-preview`), the screen
+   * fills its parent container instead of the full viewport height, so it centers
+   * correctly inside the phone frame.
+   */
+  embedded?: boolean;
+};
+
+export function BraceletPage({ embedded = false }: BraceletPageProps = {}) {
   const { status, alert, clearAlert } = useBraceletSocket();
 
   const severity = alert?.severity ?? "safe";
@@ -61,7 +70,7 @@ export function BraceletPage() {
 
   return (
     <main
-      className={`flex min-h-screen items-center justify-center px-6 transition-colors duration-300 ${severityClassName[severity]}`}
+      className={`flex ${embedded ? "h-full min-h-full" : "min-h-screen"} items-center justify-center px-6 transition-colors duration-300 ${severityClassName[severity]}`}
     >
       <section
         className={`w-full max-w-sm text-center ${isAlertActive ? "bracelet-vibrating" : ""}`}

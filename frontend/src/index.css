@@ -22,6 +22,25 @@
   box-sizing: border-box;
 }
 
+/*
+ * High-resolution scaling. The UI is built on rem units (typography, spacing, container
+ * widths, the device mockup), so bumping the root font-size on very wide CSS viewports
+ * scales the whole app up proportionally instead of leaving a tiny strip of content in
+ * the middle of a 4K display. These thresholds use CSS pixels, so displays that the OS
+ * already scales down (e.g. a 4K panel rendered at 1920 CSS px) are unaffected.
+ */
+@media (min-width: 2560px) {
+  :root {
+    font-size: 20px;
+  }
+}
+
+@media (min-width: 3840px) {
+  :root {
+    font-size: 26px;
+  }
+}
+
 body {
   min-width: 320px;
   min-height: 100vh;
