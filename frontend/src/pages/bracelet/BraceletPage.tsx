@@ -1,28 +1,14 @@
 import { useEffect } from "react";
 
-import type { AlertDirection, AlertSeverity, BraceletConnectionStatus } from "@/features/bracelet/types";
+import { directionLabel, severityTitle } from "@/features/bracelet/labels";
+import type { AlertSeverity, BraceletConnectionStatus } from "@/features/bracelet/types";
 import { useBraceletSocket } from "@/features/bracelet/useBraceletSocket";
-
-const severityTitle: Record<AlertSeverity, string> = {
-  safe: "Безпечно",
-  caution: "Обережно",
-  warning: "Увага",
-  critical: "Критична загроза",
-};
 
 const severityClassName: Record<AlertSeverity, string> = {
   safe: "bg-emerald-950 text-emerald-50",
   caution: "bg-yellow-950 text-yellow-50",
   warning: "bg-orange-950 text-orange-50",
   critical: "bg-red-950 text-red-50",
-};
-
-const directionLabel: Record<AlertDirection, string> = {
-  front: "Спереду",
-  back: "Позаду",
-  left: "Ліворуч",
-  right: "Праворуч",
-  unknown: "Поблизу",
 };
 
 const connectionStatusLabel: Record<BraceletConnectionStatus, string> = {
@@ -89,7 +75,7 @@ export function BraceletPage({ embedded = false }: BraceletPageProps = {}) {
           <h1 className="mt-4 text-5xl font-bold tracking-tight">{severityTitle[severity]}</h1>
 
           <p className="mt-6 text-xl leading-relaxed">
-            {alert?.message ?? "Прототип браслета очікує на сповіщення."}
+            {alert?.message ?? "Загроз поблизу немає."}
           </p>
 
           {hasMetrics ? (
@@ -108,10 +94,6 @@ export function BraceletPage({ embedded = false }: BraceletPageProps = {}) {
             Приховати сповіщення
           </button>
         ) : null}
-
-        <p className="mt-10 text-xs uppercase tracking-[0.2em] opacity-60">
-          Прототип браслета для телефону
-        </p>
       </section>
     </main>
   );

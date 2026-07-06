@@ -1,4 +1,5 @@
-import type { AlertDirection, AlertSeverity, BraceletConnectionStatus } from "@/features/bracelet/types";
+import { directionLabel, severityShortLabel } from "@/features/bracelet/labels";
+import type { AlertSeverity, BraceletConnectionStatus } from "@/features/bracelet/types";
 import { useRiskAlertStream } from "@/features/realtime/useRiskAlertStream";
 import { useTelemetrySnapshot } from "@/features/realtime/useTelemetrySnapshot";
 import { ScenarioControls } from "@/features/simulation/ScenarioControls";
@@ -24,21 +25,6 @@ const severityBadgeClassName: Record<AlertSeverity, string> = {
   caution: "border-yellow-400/30 bg-yellow-950/70 text-yellow-100",
   warning: "border-orange-400/30 bg-orange-950/70 text-orange-100",
   critical: "border-red-400/40 bg-red-950/70 text-red-100",
-};
-
-const severityLabel: Record<AlertSeverity, string> = {
-  safe: "Безпечно",
-  caution: "Обережно",
-  warning: "Увага",
-  critical: "Критично",
-};
-
-const directionLabel: Record<AlertDirection, string> = {
-  front: "Спереду",
-  back: "Позаду",
-  left: "Ліворуч",
-  right: "Праворуч",
-  unknown: "Поблизу",
 };
 
 function formatMetric(value: number | null, suffix = ""): string {
@@ -95,9 +81,8 @@ export function DemoPage() {
           </h1>
 
           <p className="max-w-3xl text-slate-300">
-            Консоль слухає події `risk_alert` з бекенду в реальному часі й показує оператору
-            останню загрозу. Тримай `/bracelet` відкритою паралельно, щоб перевірити синхронність
-            сповіщень.
+            Консоль показує загрози для пішоходів у реальному часі: активну небезпеку, ключові
+            показники та стрічку останніх подій.
           </p>
           <div className="flex flex-wrap items-center gap-5 text-sm text-slate-300">
             <p>
@@ -121,14 +106,14 @@ export function DemoPage() {
                 </h2>
                 <p className="mt-2 text-sm text-slate-300">
                   {activeAlert?.reason ??
-                    "Очікування потоку подій з бекенду. Запусти телеметрію емулятора, щоб отримати сповіщення."}
+                    "Зараз активних загроз немає. Щойно транспорт наблизиться до пішохода, тут з'явиться деталізація."}
                 </p>
               </div>
 
               <div
                 className={`rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] ${activeAlert ? severityBadgeClassName[activeAlert.severity] : "border-slate-700 bg-slate-900 text-slate-300"}`}
               >
-                {activeAlert ? severityLabel[activeAlert.severity] : "Очікування"}
+                {activeAlert ? severityShortLabel[activeAlert.severity] : "Очікування"}
               </div>
             </div>
 
@@ -204,7 +189,7 @@ export function DemoPage() {
             <div className="mt-5 space-y-3">
               {feedItems.length === 0 ? (
                 <div className="rounded-2xl border border-white/10 bg-slate-950/70 p-4 text-sm text-slate-400">
-                  Очікування подій у реальному часі. Запусти емулятор телеметрії, щоб наповнити стрічку.
+                  Поки що подій немає. Тут з'являтимуться отримані сповіщення про загрози.
                 </div>
               ) : null}
 
@@ -217,7 +202,7 @@ export function DemoPage() {
                     <p
                       className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${severityBadgeClassName[event.severity]}`}
                     >
-                      {severityLabel[event.severity]}
+                      {severityShortLabel[event.severity]}
                     </p>
                     <p className="text-xs text-slate-400">{formatLastSeen(event.receivedAt)}</p>
                   </div>
@@ -235,14 +220,6 @@ export function DemoPage() {
                   </div>
                 </article>
               ))}
-            </div>
-
-            <div className="mt-6 rounded-2xl border border-cyan-400/20 bg-cyan-950/40 p-4 text-cyan-50">
-              <p className="font-semibold">Примітка для оператора</p>
-              <p className="mt-2 text-sm leading-6 text-cyan-100">
-                Відкрий `/bracelet` паралельно. Обидва екрани мають реагувати на той самий потік
-                подій з `/ws/pedestrian_1`.
-              </p>
             </div>
           </aside>
         </section>

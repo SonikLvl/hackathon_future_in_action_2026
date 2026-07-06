@@ -1,13 +1,12 @@
 import { BraceletPage } from "@/pages/bracelet/BraceletPage";
 
 /**
- * A presentation-only wrapper that renders the live `/bracelet` screen inside a
- * realistic device mockup. Intended for screen recordings and slides where a bare
- * full-page bracelet would look out of place.
+ * Renders the live `/bracelet` screen inside a device mockup, so the pedestrian view can
+ * be shown in a realistic phone frame rather than as a bare full-page layout.
  */
 export function BraceletPreviewPage() {
   return (
-    <main className="relative flex min-h-screen flex-col items-center justify-center gap-10 overflow-hidden bg-slate-950 px-6 py-12">
+    <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-slate-950 px-6 py-12">
       {/* Ambient backdrop: soft glow + faint grid */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(56,189,248,0.14),transparent_62%)]" />
       <div className="pointer-events-none absolute inset-0 opacity-[0.5] [background-image:linear-gradient(rgba(148,163,184,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.05)_1px,transparent_1px)] [background-size:44px_44px]" />
@@ -36,17 +35,6 @@ export function BraceletPreviewPage() {
             <div className="pointer-events-none absolute bottom-2 left-1/2 z-10 h-1 w-28 -translate-x-1/2 rounded-full bg-white/50" />
           </div>
         </div>
-      </div>
-
-      <div className="relative max-w-sm text-center">
-        <p className="text-sm font-semibold uppercase tracking-[0.32em] text-slate-300">
-          VARTA · прев&apos;ю пристрою
-        </p>
-        <p className="mt-2 text-sm leading-relaxed text-slate-500">
-          Дзеркало екрана <span className="font-mono text-slate-300">/bracelet</span> у корпусі
-          пристрою — для запису відео та презентацій. Реагує на той самий потік подій у реальному
-          часі.
-        </p>
       </div>
     </main>
   );

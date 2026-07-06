@@ -18,9 +18,9 @@ export function ScenarioControls() {
     <section className="rounded-3xl border border-white/10 bg-slate-900/60 p-6 shadow-2xl shadow-black/30">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold">Демо-сценарії</h2>
+          <h2 className="text-xl font-bold">Сценарії</h2>
           <p className="mt-1 text-sm text-slate-300">
-            Оберіть сценарій і натисніть Старт — без термінала.
+            Оберіть сценарій і натисніть «Запустити».
           </p>
         </div>
         <div
@@ -37,9 +37,7 @@ export function ScenarioControls() {
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {scenarios.length === 0 ? (
-          <p className="text-sm text-slate-400">
-            Немає доступних сценаріїв. Перевір, чи працює бекенд.
-          </p>
+          <p className="text-sm text-slate-400">Сценарії зараз недоступні.</p>
         ) : null}
 
         {scenarios.map((scenario) => {
