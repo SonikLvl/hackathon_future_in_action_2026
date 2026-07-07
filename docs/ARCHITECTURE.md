@@ -1,69 +1,99 @@
-# VARTA — Architecture
+# VARTA – архітектура
 
-This document explains how VARTA is built, how data flows through it in real time,
-and _why_ each major decision was made. The companion [`RISK_ENGINE.md`](./RISK_ENGINE.md)
-drills into the scoring algorithm; [`DEMO.md`](./DEMO.md) covers running the system and
-its built-in scenarios.
+Документ описує, як побудована система VARTA, як дані проходять через неї в реальному часі та які технічні рішення покладено в основу. Алгоритм оцінювання ризику детально розглянуто в [`RISK_ENGINE.md`](./RISK_ENGINE.md), а локальний запуск і демонстрацію – у [`DEMO.md`](./DEMO.md).
 
 ---
 
-## 1. System overview
+## 1. Загальний огляд
 
-VARTA is a classic real-time pipeline: **ingest → reason → push**, with a lightweight
-read-model for visualization.
+VARTA – це конвеєр реального часу (real-time pipeline) за принципом **приймання → оцінювання → передавання** (ingest → reason → push), доповнений окремим каналом даних для візуалізації.
 
 ```mermaid
 flowchart LR
-    subgraph Sources["Devices / scenario runner / emulator"]
-        V["Vehicles<br/>(scooter, bike, car)"]
-        P["Pedestrian<br/>(web app / bracelet)"]
+    subgraph Sources["Пристрої / емулятор"]
+        V["Транспорт<br/>(самокат, велосипед)"]
+        P["Пішохід<br/>(браслет / застосунок)"]
     end
 
-    subgraph Backend["FastAPI backend (:8000)"]
+    subgraph Backend["Бекенд FastAPI (:8000)"]
         API["POST /api/telemetry"]
-        SIM["Scenario runner<br/>(/api/simulation/*)"]
-        STATE[("In-memory state<br/>dict + asyncio.Lock")]
-        RE["Risk engine loop<br/>(asyncio, every 0.5s)"]
-        CM["ConnectionManager<br/>(WebSocket fan-out)"]
+        STATE[("Оперативний стан<br/>active_devices + asyncio.Lock")]
+        RE["Цикл оцінювання ризику<br/>(asyncio, кожні 0.5 с)"]
+        CM["ConnectionManager<br/>(розсилка / fan-out)"]
         SNAP["GET /api/active-devices"]
-        DB[("PostgreSQL<br/>incidents / registry")]
+        DB[("PostgreSQL<br/>інциденти / реєстр")]
     end
 
-    subgraph Frontend["React app (:5173)"]
-        CONSOLE["/demo — operator console"]
-        BRACELET["/bracelet — pedestrian device"]
+    subgraph Frontend["Застосунок React (:5173)"]
+        CONSOLE["/demo – демо-консоль"]
+        BRACELET["/bracelet – пристрій пішохода"]
     end
 
-    V -- "position + speed" --> API
-    P -- "position + speed" --> API
+    V -- "координати + швидкість" --> API
+    P -- "координати + швидкість" --> API
     API --> STATE
-    SIM -- "scripted actors" --> STATE
-    CONSOLE -- "start / stop scenario" --> SIM
     STATE --> RE
     RE -- "risk_alert / risk_clear" --> CM
-    RE -- "near-miss incident" --> DB
+    RE -- "критичний інцидент" --> DB
     CM -- "WebSocket /ws/{id}" --> BRACELET
     CM -- "WebSocket /ws/{id}" --> CONSOLE
     STATE --> SNAP
-    SNAP -- "poll 500ms" --> CONSOLE
+    SNAP -- "опитування 500 мс" --> CONSOLE
 ```
 
-Two independent data paths reach the console on purpose:
+До демо-консолі свідомо ведуть два незалежні потоки даних:
 
-1. **Event path (WebSocket)** — _what the risk engine decided_: severity, direction,
-   score, reason. This drives the alert card and the pedestrian bracelet.
-2. **Snapshot path (polling)** — _where everything physically is_: raw positions used
-   to animate the map. Keeping these separate is the key architectural decision behind
-   a stable, non-jittery visualization (see §5).
+1. **Потік подій (WebSocket)** – *рішення* модуля ризику: рівень небезпеки, напрямок, ризик-скор (risk score) і причина. Він керує карткою активної загрози та інтерфейсом пішохода.
+2. **Потік знімків (polling / опитування)** – *фактичні координати* всіх об'єктів. Демо-консоль опитує `GET /api/active-devices` і за цими даними анімує сцену.
+
+Розділення цих потоків – ключове рішення. Дискретні змістовні події не змішуються з безперервним оновленням позицій, тому візуалізація лишається стабільною, а логіка попереджень – передбачуваною.
 
 ---
 
-## 2. Components
+## 2. Потік даних одного епізоду
 
-### 2.1 Ingestion — `POST /api/telemetry` (`main.py`)
+- Емулятор (або реальний пристрій) щопів секунди надсилає кадри телеметрії пішохода й транспорту.
+- Сервер записує їх у `active_devices`, проставляючи власний час отримання.
+- Модуль ризику читає знімок стану під блокуванням, для кожної пари обчислює відстань, факт зближення, час до конфлікту (TTC) і рівень небезпеки.
+- Під час появи загрози або зростання рівня надсилається `risk_alert`; той самий рівень оновлюється з обмеженою частотою; після завершення епізоду надсилається один `risk_clear`.
+- Пристрій пішохода показує стан і вмикає вібрацію, демо-консоль оновлює картку загрози та стрічку подій.
 
-Every device (real or emulated) posts a small JSON frame validated by
-`TelemetryInput` (`schemas.py`):
+```mermaid
+sequenceDiagram
+    participant Emu as Емулятор
+    participant API as POST /api/telemetry
+    participant St as active_devices
+    participant RE as Модуль ризику (0.5 с)
+    participant WS as WebSocket
+    participant UI as Консоль + браслет
+
+    loop кожні 0.5 с
+        Emu->>API: кадри пішохода й самоката
+        API->>St: запис (час сервера)
+    end
+
+    loop кожні 0.5 с
+        RE->>St: знімок стану (під блокуванням)
+        Note over RE: відстань, зближення?, TTC, рівень, скор
+        alt рівень зростає (поява / ескалація)
+            RE->>WS: risk_alert
+            WS->>UI: показ + вібрація
+        else той самий рівень
+            RE->>WS: оновлення не частіше ніж раз на 2.5 с
+        else транспорт минув / не наближається
+            RE->>WS: risk_clear
+            WS->>UI: повернення у спокій
+        end
+    end
+```
+
+---
+
+## 3. Основні компоненти
+
+### 3.1 Приймання телеметрії – `POST /api/telemetry` (`main.py`)
+
+Кожен пристрій надсилає невеликий JSON-кадр, валідований `TelemetryInput` (`schemas.py`):
 
 ```json
 {
@@ -76,124 +106,33 @@ Every device (real or emulated) posts a small JSON frame validated by
 }
 ```
 
-The server stamps `last_updated` **on the server** (not the client) to avoid clock
-skew between devices, then writes the frame into the shared `active_devices` dict under
-`state_lock`. Ingestion does no risk math — it stays fast and dumb.
+Час `last_updated` проставляється **на сервері**, а не клієнтом, щоб уникнути розбіжності годинників між пристроями. Далі кадр записується у спільний словник `active_devices` під `state_lock`. На цьому кроці немає жодних обчислень ризику – приймання лишається швидким і простим.
 
-### 2.2 Hot state — `state.py`
+### 3.2 Оперативний стан – `state.py`
 
-```python
-active_devices: dict = {}      # device_id -> {lat, lon, speed, azimuth, is_pedestrian, last_updated}
-state_lock = asyncio.Lock()
-```
+`active_devices` (звичайний `dict`) разом із `state_lock = asyncio.Lock()` утворюють «поточний світ». Оскільки FastAPI працює на одному циклі подій (event loop) asyncio, для узгодженості читань і записів достатньо асинхронного блокування без потоків.
 
-A single process-wide dict is the "current world". Because FastAPI runs on one asyncio
-event loop, an `asyncio.Lock` is enough to keep reads/writes consistent without threads.
+### 3.3 Модуль оцінювання ризику – `risk_engine.py`
 
-### 2.3 Risk engine — `risk_engine.py`
+Фонова корутина, запущена в `lifespan` застосунку. Кожні **0.5 с** вона бере знімок стану, формує всі пари «пішохід × транспорт», оцінює кожну й вирішує, що надіслати: `risk_alert`, `risk_clear` чи нічого. Це серце системи, повністю описане в [`RISK_ENGINE.md`](./RISK_ENGINE.md).
 
-A background coroutine started in the FastAPI `lifespan`. Every **0.5 s** it snapshots
-the state, forms every `pedestrian × vehicle` pair, scores each pair, and applies an
-emission policy that decides whether to send a `risk_alert`, a `risk_clear`, or stay
-silent. This is the heart of the product — fully documented in
-[`RISK_ENGINE.md`](./RISK_ENGINE.md).
+### 3.4 Канал подій – `connection_manager.py` + `/ws/{client_id}`
 
-### 2.4 Push channel — `connection_manager.py` + `/ws/{client_id}`
+`ConnectionManager` зберігає **список сокетів на кожен `client_id`** (`dict[str, list[WebSocket]]`). Це важливо: під час демо той самий пішохід (`pedestrian_1`) відкритий одразу в кількох місцях – демо-консоль, сторінка браслета та слухач емулятора. Менеджер з одним сокетом на клієнта передавав би події лише останньому підключенню. Розсилка (fan-out) доставляє кожну подію всім сесіям і прибирає «мертві» сокети після помилки надсилання.
 
-`ConnectionManager` stores **a list of sockets per `client_id`**:
+### 3.5 Поточний знімок сцени – `GET /api/active-devices`
 
-```python
-active_connections: dict[str, list[WebSocket]]
-```
+Повертає поточний стан `active_devices`. Демо-консоль опитує його кожні 500 мс, щоб анімувати позиції об'єктів. Це навмисно проста read-model без будь-якої логіки ризику – лише «де зараз усі перебувають».
 
-This matters: during a demo the same pedestrian (`pedestrian_1`) is open in several
-tabs at once — the console, the bracelet, and the emulator's listener. A single-socket
-manager would only feed the last one to connect. Fan-out broadcasts each event to all
-of them and prunes dead sockets on send failure.
+### 3.6 Довготривале сховище – PostgreSQL (`db.py`, `models.py`, `seed.py`)
 
-### 2.5 Live snapshot — `GET /api/active-devices`
-
-Returns the current `active_devices` as `ActiveDevicesResponse`. The console polls this
-every 500 ms to animate actor positions. It's a deliberately simple read-model — no
-risk logic, just "where is everyone right now".
-
-### 2.6 Cold storage — PostgreSQL (`db.py`, `models.py`, `seed.py`)
-
-Async SQLAlchemy over `asyncpg`. Tables: `users`, `devices`, `vehicles`, `incidents`.
-On startup the app creates tables (`create_all`, MVP shortcut for Alembic) and seeds
-`pedestrian_1` + `scooter_1` so the seeded IDs resolve. The risk engine writes an
-`Incident` row once per episode when a pair first reaches **critical** — this is the
-seed of a future near-miss heatmap.
-
-### 2.7 Scenario runner — `simulation_runner.py` + `/api/simulation/*`
-
-An in-process `SimulationManager` owns a single scripted-scenario task and its lifecycle.
-Instead of a separate CLI process, the operator starts and stops encounters directly from
-the console; the manager advances each scripted actor once per tick and writes its frame
-into `active_devices` exactly as a real device's `POST /api/telemetry` would. From the
-risk engine's point of view the source is indistinguishable from live hardware.
-
-Four scenarios are registered:
-
-| `id`           | Name                         | What it exercises                                        |
-| -------------- | ---------------------------- | -------------------------------------------------------- |
-| `head_on`      | Scooter head-on              | The canonical caution → warning → critical → clear arc   |
-| `side_crossing`| Bike crossing from the side  | A `right`-direction crossing conflict                    |
-| `from_behind`  | Scooter overtaking from behind | A `back`-direction overtake-and-pass                    |
-| `busy_street`  | Busy street (scooter + bike) | Two vehicles at once; console picks the primary threat   |
-
-The manager tracks the device IDs it owns (`_managed_ids`) and, on stop or when switching
-scenarios, purges only those devices from hot state — the pedestrian and any real devices
-are left untouched, so the scene never leaves "ghost" actors behind.
-
-| Endpoint                      | Method | Purpose                                    |
-| ----------------------------- | ------ | ------------------------------------------ |
-| `/api/simulation/scenarios`   | GET    | List available scenarios (id/name/desc)    |
-| `/api/simulation/status`      | GET    | `{ running, scenarioId, phase, elapsedSeconds }` |
-| `/api/simulation/start`       | POST   | Start a scenario by `scenarioId`           |
-| `/api/simulation/stop`        | POST   | Stop the running scenario and purge its actors |
-
-The task is also cancelled during FastAPI `lifespan` shutdown so nothing is left running.
+Асинхронний SQLAlchemy поверх `asyncpg`. Таблиці: `users`, `devices`, `vehicles`, `incidents`. На старті застосунок створює таблиці (`create_all`) і засіває `pedestrian_1` та `scooter_1`, щоб ідентифікатори з емулятора існували в базі. Модуль ризику записує рядок `Incident` один раз за епізод, коли пара вперше досягає рівня **critical** – це основа для майбутньої карти небезпечних зближень.
 
 ---
 
-## 3. Real-time sequence (one near-miss)
+## 4. Контракти подій (`schemas.py`)
 
-```mermaid
-sequenceDiagram
-    participant Emu as Emulator
-    participant API as POST /api/telemetry
-    participant St as active_devices
-    participant RE as Risk engine (0.5s)
-    participant WS as WebSocket
-    participant UI as Console + Bracelet
-
-    loop every 0.5s
-        Emu->>API: pedestrian + scooter frames
-        API->>St: upsert (server timestamp)
-    end
-
-    loop every 0.5s
-        RE->>St: read snapshot (under lock)
-        Note over RE: distance, closing?, TTC, severity, score
-        alt severity rises (entry / escalation)
-            RE->>WS: risk_alert {severity, direction, score, reason}
-            WS->>UI: render + vibrate
-        else same severity
-            RE->>WS: refresh at most every 2.5s
-        else vehicle passed / not closing
-            RE->>WS: risk_clear {vehicleId}
-            WS->>UI: return to idle
-        end
-    end
-```
-
----
-
-## 4. Event contracts (`schemas.py`)
-
-The backend↔frontend boundary is a small, versioned, discriminated union. The frontend
-never guesses — it matches on `type`.
+Межа між бекендом і фронтендом – невелика версіонована (versioned) дискримінована спілка (discriminated union). Фронтенд не вгадує структуру, а зіставляє поле `type`.
 
 ### `risk_alert`
 
@@ -202,18 +141,18 @@ never guesses — it matches on `type`.
   "type": "risk_alert",
   "version": 1,
   "timestamp": "2026-07-02T18:00:00Z",
-  "deviceId": "pedestrian_1", // who the alert is FOR
-  "vehicleId": "scooter_1", // the threat
-  "severity": "warning", // safe | caution | warning | critical
-  "riskScore": 72, // 0–100 gauge, consistent with severity band
+  "deviceId": "pedestrian_1",   // кому призначене попередження
+  "vehicleId": "scooter_1",     // джерело загрози
+  "severity": "warning",        // safe | caution | warning | critical
+  "riskScore": 72,              // шкала 0–100, узгоджена з рівнем небезпеки
   "message": "УВАГА! Транспорт наближається спереду (13 м)",
-  "direction": "front", // relative to the pedestrian's heading
+  "direction": "front",         // відносно напрямку руху пішохода
   "distanceMeters": 13.4,
-  "timeToConflictSeconds": 3.9, // null if not closing
+  "timeToConflictSeconds": 3.9, // null, якщо транспорт не наближається
   "vehicleType": "scooter",
   "speedKmh": 10.8,
-  "reason": "Vehicle approaching from front; distance 13.4m; speed 10.8 km/h; ...",
-  "vibrationPattern": [140, 90, 140],
+  "reason": "Транспорт наближається спереду; відстань 13.4 м; швидкість 10.8 км/год",
+  "vibrationPattern": [140, 90, 140]
 }
 ```
 
@@ -226,105 +165,62 @@ never guesses — it matches on `type`.
   "timestamp": "2026-07-02T18:00:11Z",
   "deviceId": "pedestrian_1",
   "vehicleId": "scooter_1",
-  "reason": "Vehicle no longer closing / left the risk zone.",
+  "reason": "Загроза минула"
 }
 ```
 
-**Why a versioned, self-describing contract?** It decouples the two halves of the team,
-lets the bracelet and console share one parser, and keeps the payload self-explanatory
-(`reason` and `message` are human-readable). `version` leaves room to evolve without
-breaking older clients.
+Версіонований самоописовий контракт розділяє дві частини команди, дозволяє консолі й браслету використовувати один парсер, а поля `reason` і `message` лишаються людиночитними. Поле `version` дає простір для розвитку без поломки наявних клієнтів.
 
 ---
 
-## 5. Frontend design (`frontend/src`)
+## 5. Frontend (`frontend/src`)
 
-### Routing (`app/App.tsx`)
+### Маршрутизація (`app/App.tsx`)
 
-Deliberately dependency-free path routing (no router library):
-`/` and `/demo` → console, `/bracelet` → pedestrian device, `/bracelet-preview` →
-video-friendly variant.
+Навмисно без бібліотеки-роутера: `/` та `/demo` → демо-консоль, `/bracelet` → пристрій пішохода, `/bracelet-preview` → той самий інтерфейс у корпусі пристрою для відеодемонстрації.
 
-### Real-time hooks (`features/realtime`)
+### Потік реального часу (`features/realtime`)
 
-- **`useRiskAlertStream`** — owns the WebSocket: connect, auto-reconnect with backoff,
-  parse each message, keep `latestAlert` + a bounded `alertHistory`. It handles
-  `risk_clear` specially: it clears the active alert **only if** the cleared `vehicleId`
-  matches the one on screen, and does **not** push clears into the history feed.
-- **`useTelemetrySnapshot`** — polls `/api/active-devices` every 500 ms into a typed
-  `TelemetryDeviceSnapshot[]`.
-- **`useSimulationControl`** — fetches the scenario catalogue once, polls
-  `/api/simulation/status`, and exposes `start`/`stop`. It backs the console's scenario
-  panel so an operator can drive encounters without touching a terminal.
+- **`useRiskAlertStream`** – володіє WebSocket-з'єднанням: підключення, автоматичне перепідключення (auto-reconnect), парсинг подій, зберігання `latestAlert` та обмеженої історії `alertHistory`. Подію `risk_clear` обробляє окремо: очищає активну загрозу лише тоді, коли її `vehicleId` збігається з поточним, і не додає очищення в історію.
+- **`useTelemetrySnapshot`** – опитує `/api/active-devices` кожні 500 мс у типізований масив пристроїв.
 
-Both `/demo` and `/bracelet` reuse `useRiskAlertStream`, guaranteeing they react to the
-exact same event stream — which is what keeps the console and the bracelet in sync.
+Сторінки `/demo` і `/bracelet` використовують `useRiskAlertStream`, тому реагують на один і той самий потік подій – це і забезпечує синхронність.
 
-### Simulation (`features/simulation`)
+### Візуалізація (`features/simulation`)
 
-- **`useSimulationEngine`** — converts raw telemetry into on-screen `actors`.
-  - **Motion comes only from telemetry.** Alerts never move actors; they only decorate
-    (severity glow, primary-threat highlight). This separation killed an earlier class
-    of "the scene fights itself" jitter bugs.
-  - **Pedestrian-anchored projection.** The first pedestrian fix becomes a world anchor;
-    everyone is projected in metres relative to it (`METERS_TO_SCENE`), so the camera
-    doesn't rubber-band as GPS values change.
-  - **Adaptive smoothing** (`lerpAdaptive`) eases actors toward their telemetry target
-    and snaps when very close, avoiding both lag and micro-oscillation.
-  - **Snap-on-teleport.** When a new scenario starts, actors jump to fresh start
-    positions; a jump larger than a threshold is treated as a teleport, so the actor
-    snaps (and clears its trail) instead of sliding across the map from the old scenario.
-- **`ThreatScene`** — a pure SVG/Tailwind render of the snapshot on a square canvas so
-  distances and angles are uniform:
-  - **Pedestrian (green)** at the anchor, surrounded by three concentric **risk-zone
-    rings** drawn at the engine's real thresholds (24 m caution, 14 m warning, 7 m
-    critical) via the shared `METERS_TO_SCENE` scale — the rings make the severity bands
-    literally visible.
-  - **Primary threat (red)** with a solid **threat arrow** (non-scaling stroke) that
-    points from the vehicle to the pedestrian, plus a bright center dot anchoring its
-    origin. The arrow and dot render **only when there is an active threat**.
-  - Up to two nearest **secondary vehicles (orange)** plus an "other traffic (+N)"
-    counter, a live directional badge, a TTC readout, and a compact color legend.
-- **`ScenarioControls`** — a console panel listing the backend scenarios with explicit
-  Start/Stop buttons; it shows live `phase` and `elapsedSeconds` from
-  `useSimulationControl`. This replaced an earlier client-side phase heuristic — the
-  phase now comes straight from the backend runner, so it is authoritative.
+- **`useSimulationEngine`** – перетворює телеметрію на екранних акторів. Рух походить **лише з телеметрії**; події ризику акторів не рухають, а лише додають підсвічування. Перша позиція пішохода стає світовим якорем (world anchor), усі об'єкти проєктуються в метрах відносно нього, тому камера не «стрибає» під час зміни координат. Згладжування (smoothing) плавно веде акторів до цільової позиції.
+- **`ThreatScene`** – SVG-сцена поточного знімка: пішохід (зелений) із кільцем безпечної зони, основна загроза (червоний) зі слідом руху та лінією напрямку загрози, до двох найближчих другорядних транспортних засобів, лічильник іншого руху та легенда.
 
 ```mermaid
 flowchart TD
-    WS["useRiskAlertStream<br/>(WebSocket events)"] --> DEMO["DemoPage"]
+    WS["useRiskAlertStream<br/>(події WebSocket)"] --> DEMO["DemoPage"]
     POLL["useTelemetrySnapshot<br/>(/api/active-devices)"] --> ENGINE["useSimulationEngine"]
-    SIMCTL["useSimulationControl<br/>(/api/simulation/*)"] --> CONTROLS["ScenarioControls"]
     DEMO --> ENGINE
-    DEMO --> CONTROLS
     ENGINE --> SCENE["ThreatScene (SVG)"]
-    WS --> BR["BraceletPage<br/>(vibrate + full-screen)"]
+    WS --> BR["BraceletPage<br/>(вібрація + повний екран)"]
 ```
 
 ---
 
-## 6. Technology choices & rationale
+## 6. Технічні рішення та обґрунтування
 
-| Decision                                | Why                                                                                                                                             |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **FastAPI + asyncio**                   | One event loop cleanly handles many WebSockets + a periodic risk loop. No thread/lock complexity; native async DB.                              |
-| **In-memory hot state**                 | Risk decisions need the _latest_ position at sub-second cadence. A dict lookup beats a DB round-trip; Postgres is reserved for cold/audit data. |
-| **WebSocket push (not client polling)** | Safety alerts must be immediate and server-initiated. Polling from a phone every second wastes battery and adds latency.                        |
-| **Split event vs. snapshot paths**      | Lets the _decision_ (discrete, meaningful) and the _animation_ (continuous, cosmetic) evolve independently and stay visually stable.            |
-| **Versioned discriminated events**      | Shared, future-proof contract; one parser for console + bracelet; human-readable payloads.                                                      |
-| **React + Vite + Tailwind, SVG scene**  | Fast iteration, no heavy game/animation dependencies, crisp vector rendering at any display size.                                               |
-| **Scripted scenarios instead of hardware** | Reproducible and tunable without GPS units; a real device would `POST` the identical telemetry payload.                                       |
+| Рішення                              | Чому саме так                                                                                                                       |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| **FastAPI + asyncio**                | Один цикл подій обслуговує багато WebSocket-з'єднань і періодичний цикл ризику без потоків та складних блокувань; асинхронна БД.     |
+| **Оперативний стан у пам'яті (in-memory state)** | Рішення про ризик потребують *останньої* позиції з субсекундною частотою; звернення до словника швидше за запит до БД.          |
+| **Push через WebSocket (server push)** | Попередження про небезпеку мають бути миттєвими й ініційованими сервером; опитування з телефону додавало б затримку та витрату батареї. |
+| **Розділення потоків подій і знімків** | Дозволяє *рішенню* (дискретному й змістовному) та *анімації* (безперервній і косметичній) розвиватися незалежно й лишатися стабільними. |
+| **Версіоновані дискриміновані події** | Спільний контракт, один парсер для консолі й браслета, людиночитні поля.                                                            |
+| **React + Vite + Tailwind, SVG-сцена** | Швидка розробка без важких залежностей для анімації; чітке відображення за будь-якого розміру екрана.                              |
+| **Емулятор замість обладнання**       | Відтворюваний і керований сценарій без GPS-пристроїв; реальний пристрій надсилав би такий самий кадр телеметрії.                    |
 
 ---
 
-## 7. Known limitations (current MVP)
+## 7. Межі поточної реалізації
 
-- **Single-process, in-memory state** — no horizontal scaling yet; state is lost on
-  restart. Fine for a demo, replaced by Redis/streaming in production (see roadmap).
-- **Planar geometry** — distance uses the haversine formula, but direction/scene use a
-  local flat-earth approximation, valid at city scale.
-- **Simplified TTC** — a closing-speed heuristic, not full trajectory intersection.
-- **`create_all` instead of migrations** — MVP shortcut; Alembic for production.
+- **Один процес, стан у пам'яті** – горизонтального масштабування ще немає, стан втрачається при перезапуску. Для демо цього достатньо; у продакшені (production) його замінює спільне сховище чи потокова обробка (streaming).
+- **Планарна геометрія** – відстань рахується за формулою гаверсинуса, а напрямок і сцена використовують локальне пласке наближення, коректне в міському масштабі.
+- **Спрощений TTC** – евристика за швидкістю зближення, а не повний розрахунок перетину траєкторій.
+- **`create_all` замість міграцій** – спрощення для MVP; для продакшену – Alembic.
 
-See [`DEMO.md`](./DEMO.md#8-roadmap--production-path) for how each of these becomes a
-production feature.
+Як кожне з цих обмежень стає повноцінною можливістю, описано в розділі траєкторії розвитку [`DEMO.md`](./DEMO.md).

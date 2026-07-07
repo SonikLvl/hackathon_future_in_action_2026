@@ -1,294 +1,220 @@
-# VARTA — Risk Engine
+# VARTA – модуль оцінювання ризику
 
-The risk engine (`risk_engine.py`) is the product's brain. It turns a stream of raw
-positions into a small number of **meaningful, non-annoying, explainable** alerts. This
-document is the reference for how it decides _what_ to say and _when_ to say it.
+Модуль ризику (`risk_engine.py`) – це «мозок» системи. Він перетворює потік координат на невелику кількість **змістовних, ненав'язливих і пояснюваних** попереджень. Документ описує, *що* саме система повідомляє і *коли* вона це робить.
 
-Design goals, in priority order:
+Пріоритети в порядку важливості:
 
-1. **Correctness of intent** — only warn about vehicles that are genuinely closing in.
-2. **Explainability** — every alert carries a human-readable `reason` and a direction.
-3. **No alert fatigue** — speak on escalation, stay quiet otherwise, and clean up after.
-4. **Perceptible escalation** — transitions between severities are paced so a person has
-   time to perceive and react to each step, rather than jumping straight to critical.
+1. **Правильність наміру** – попереджати лише про транспорт, який справді наближається.
+2. **Пояснюваність** – кожне попередження має людиночитну причину `reason` і напрямок.
+3. **Відсутність втоми від сповіщень** – повідомляти про зростання ризику, мовчати в решті випадків і коректно завершувати епізод.
+4. **Помітність ескалації** – переходи між рівнями рознесені в часі так, щоб людина встигала сприйняти й відреагувати на кожен крок.
 
 ---
 
-## 1. The loop
+## 1. Цикл оцінювання
 
-```python
-while True:
-    snapshot state under lock
-    drop devices stale > 60s   (and their pair state)
-    for each (pedestrian, vehicle) pair:
-        process_pair(...)
-    await asyncio.sleep(0.5)
+```text
+поки працює застосунок:
+    знімок стану під блокуванням
+    прибрати пристрої, мовчазні понад 60 с (і стан їхніх пар)
+    для кожної пари (пішохід, транспорт):
+        обробити пару
+    зачекати 0.5 с
 ```
 
-Runs every **0.5 s**. Each tick evaluates every pedestrian↔vehicle pair independently.
+Цикл виконується кожні **0.5 с** і на кожній ітерації незалежно оцінює всі пари «пішохід ↔ транспорт».
 
 ---
 
-## 2. Per-pair state
+## 2. Стан пари
 
-Because a real relationship evolves over time, each pair keeps a small memory
-(`PairState`), keyed `"<pedestrian_id>__<vehicle_id>"`:
+Оскільки реальна взаємодія розгортається в часі, кожна пара зберігає невелику пам'ять (`PairState`) з ключем `"<pedestrian_id>__<vehicle_id>"`:
 
-| Field              | Purpose                                                                  |
-| ------------------ | ------------------------------------------------------------------------ |
-| `last_distance`    | Previous distance — used to detect **closing** vs. receding              |
-| `emitted_severity` | The **latched** severity for this episode (never downgraded until clear) |
-| `last_emit_time`   | Cooldown anchor for same-severity refreshes                              |
-| `critical_logged`  | Ensures a near-miss incident is written to DB **once** per episode       |
+| Поле               | Призначення                                                                 |
+| ------------------ | --------------------------------------------------------------------------- |
+| `last_distance`    | Попередня відстань – для визначення зближення чи віддалення                  |
+| `emitted_severity` | **Зафіксований** (latched) рівень епізоду – не знижується до завершення     |
+| `last_emit_time`   | Опорний час для обмеження повторів того самого рівня                         |
+| `critical_logged`  | Гарантує запис інциденту в БД **один раз** за епізод                         |
 
-When either device goes stale, its pair state is discarded so a new encounter starts clean.
-
----
-
-## 3. Signals computed each tick
-
-For a pair, from the two latest frames:
-
-- **Distance** — haversine, in metres.
-- **Closing?** — `dist < last_distance - 0.3 m`. The `0.3 m` epsilon absorbs GPS
-  jitter so we don't flip-flop. **First sighting is never "closing"** (no history yet),
-  which prevents a spurious alert on the very first frame.
-- **Time-to-conflict (TTC)** — `distance / (vehicle_speed + pedestrian_speed)`, a
-  closing-speed heuristic. `null` when not closing.
-- **Vehicle speed** — a vehicle must move `> 1.5 m/s` (~5.4 km/h) to count as a threat;
-  parked/idling vehicles are ignored.
+Коли будь-який із пристроїв стає неактивним, стан його пари скидається, тож нова взаємодія починається «з чистого аркуша».
 
 ---
 
-## 4. Severity mapping
+## 3. Сигнали на кожному кроці
 
-Severity is **distance-band–driven** (interpretable, stable), and **escalated by TTC**
-so a fast approach trips a higher level earlier than distance alone would.
+Для пари з двох останніх кадрів обчислюються:
 
-| Severity   | Trigger (distance **or** TTC)                                 |
-| ---------- | ------------------------------------------------------------- |
-| `critical` | `dist ≤ 7 m` or `TTC ≤ 1.5 s`                                 |
-| `warning`  | `dist ≤ 14 m` or `TTC ≤ 3.0 s`                                |
-| `caution`  | `dist ≤ 24 m` or `TTC ≤ 5.0 s`                                |
-| `safe`     | everything else, **or** not closing, **or** vehicle < 1.5 m/s |
-
-> Distance bands (not raw score) drive the label because they're easy to reason about,
-> easy to tune, and don't wobble frame-to-frame — which keeps the demo legible.
+- **Відстань** – за формулою гаверсинуса (haversine), у метрах.
+- **Зближення?** – `dist < last_distance − 0.3 м`. Поріг `0.3 м` поглинає похибку GPS, щоб стан не «мерехтів». Перша поява пари ніколи не вважається зближенням (немає історії), що виключає хибне попередження на першому кадрі.
+- **Час до конфлікту (TTC)** – `відстань / (швидкість_транспорту + швидкість_пішохода)`, евристика (heuristic) за швидкістю зближення. Дорівнює `null`, якщо зближення немає.
+- **Швидкість транспорту** – транспорт має рухатися швидше за `1.5 м/с` (~5.4 км/год), щоб вважатися загрозою; припарковані чи повільні об'єкти ігноруються.
 
 ---
 
-## 5. Risk score (the 0–100 gauge)
+## 4. Рівні небезпеки
 
-Severity is the _decision_; the score is a smooth _gauge_ for the UI. It's a weighted
-blend of three normalized components:
+Рівень визначається насамперед **діапазоном відстані** (зрозуміло й стабільно) і **посилюється за TTC**, тож швидке наближення спрацьовує на вищий рівень раніше, ніж це зробила б сама відстань.
 
-```
-distance_score = clamp(100 · (1 − distance / 28 m))
-ttc_score      = 0 if not closing else clamp(100 · (1 − TTC / 8 s))
-speed_score    = clamp(100 · speed_kmh / 35)
+| Рівень     | Умова (відстань **або** TTC)                                   |
+| ---------- | -------------------------------------------------------------- |
+| `critical` | `dist ≤ 7 м` або `TTC ≤ 1.5 с`                                 |
+| `warning`  | `dist ≤ 14 м` або `TTC ≤ 3.0 с`                                |
+| `caution`  | `dist ≤ 24 м` або `TTC ≤ 5.0 с`                                |
+| `safe`     | усе інше, **або** немає зближення, **або** швидкість < 1.5 м/с  |
+
+Рівень визначає саме діапазон відстані, а не «сирий» скор: діапазони легко пояснити й налаштувати, і вони не коливаються від кадру до кадру.
+
+---
+
+## 5. Ризик-скор (шкала 0–100)
+
+Рівень – це *рішення*; скор – це плавна *шкала* для інтерфейсу. Він є зваженою сумою трьох нормалізованих складових:
+
+```text
+distance_score = clamp(100 · (1 − відстань / 28 м))
+ttc_score      = 0, якщо немає зближення, інакше clamp(100 · (1 − TTC / 8 с))
+speed_score    = clamp(100 · швидкість_км/год / 35)
 
 raw = 0.50·distance_score + 0.30·ttc_score + 0.20·speed_score
 ```
 
-`raw` is then **clamped into the band of the current severity** so the number always
-agrees with the label:
+Далі `raw` **обмежується діапазоном поточного рівня**, тож число завжди узгоджене з міткою:
 
-| Severity | Score band |
-| -------- | ---------- |
-| safe     | 0–40       |
-| caution  | 45–64      |
-| warning  | 65–84      |
-| critical | 85–100     |
+| Рівень   | Діапазон скору |
+| -------- | -------------- |
+| safe     | 0–40           |
+| caution  | 45–64          |
+| warning  | 65–84          |
+| critical | 85–100         |
 
-This resolves a real tension: the scenarios run at moderate, realistic micromobility
-speeds, and a slow vehicle would otherwise produce a low raw score even while it is
-metres away and closing. Anchoring the gauge to the distance-driven band keeps the
-number consistent with the label and climbing smoothly through the escalation.
+Це знімає реальне протиріччя: у демо транспорт рухається з помірною, реалістичною швидкістю, і сам по собі «сирий» скор був би низьким навіть за кілька метрів до пішохода. Прив'язка шкали до діапазону рівня тримає число узгодженим з міткою й плавно зростаючим під час ескалації.
 
 ---
 
-## 6. Emission policy — say something only when it matters
+## 6. Політика генерації подій
 
-This is what separates VARTA from a proximity buzzer. Given the current `severity` and
-the pair's `emitted_severity`:
+Саме ця політика (emission policy) відрізняє VARTA від простого датчика близькості. Залежно від поточного `severity` та зафіксованого `emitted_severity`:
 
 ```mermaid
 stateDiagram-v2
     [*] --> Safe
-    Safe --> Alerting: severity ≥ caution<br/>→ emit risk_alert (entry)
-    Alerting --> Alerting: higher severity<br/>→ emit immediately (bypass cooldown)
-    Alerting --> Alerting: same severity<br/>→ refresh only every 2.5s
-    Alerting --> Alerting: lower severity (still closing)<br/>→ SUPPRESS (stay latched)
-    Alerting --> Safe: safe / not closing<br/>→ emit risk_clear once
-    Safe --> Safe: still safe → stay silent
+    Safe --> Alerting: рівень ≥ caution<br/>→ risk_alert (поява)
+    Alerting --> Alerting: вищий рівень<br/>→ надіслати негайно
+    Alerting --> Alerting: той самий рівень<br/>→ оновлення раз на 2.5 с
+    Alerting --> Alerting: нижчий рівень (ще зближення)<br/>→ приховати (латч)
+    Alerting --> Safe: safe / не наближається<br/>→ один risk_clear
+    Safe --> Safe: досі safe → тиша
 ```
 
-In words:
+Словами:
 
-- **Entry** (`safe → caution/warning/critical`): emit a `risk_alert`.
-- **Escalation** (severity increased): emit **immediately**, bypassing any cooldown —
-  rising danger should never wait.
-- **Same severity**: re-emit at most every **2.5 s** to refresh distance/TTC on screen.
-- **De-escalation while still closing**: **suppressed**. Severity stays latched at its
-  peak so the alert never flickers "critical → warning → critical" during an approach.
-- **Clear** (`→ safe`, i.e. no longer closing or left the zone): emit exactly one
-  `risk_clear`, then reset the pair to silent.
+- **Поява** (`safe → caution/warning/critical`): надсилається `risk_alert`.
+- **Ескалація** (рівень зріс): надсилається **негайно**, в обхід будь-якого обмеження частоти – зростання небезпеки не має чекати.
+- **Той самий рівень**: повторюється не частіше ніж раз на **2.5 с**, щоб оновити відстань і TTC на екрані.
+- **Зниження рівня під час зближення**: **приховується**. Рівень лишається зафіксованим на піку, щоб попередження не «мерехтіло» critical → warning → critical.
+- **Завершення** (`→ safe`, тобто транспорт минув або більше не наближається): надсилається рівно один `risk_clear`, після чого пара повертається до тиші.
 
-Net effect for one encounter: a clean **one caution, one warning, one critical, one
-clear** — not a stream of dozens of buzzes.
+Підсумок для одного епізоду: чіткі **один caution, один warning, один critical, один clear** – а не десятки вібросигналів.
 
 ---
 
-## 7. Direction — relative to the pedestrian
+## 7. Напрямок – відносно пішохода
 
-Direction is computed as the bearing from pedestrian to vehicle, **rotated by the
-pedestrian's heading**, then bucketed:
+Напрямок обчислюється як азимут від пішохода до транспорту, **повернутий на напрямок руху пішохода**, і далі розкладається на сектори:
 
-```
-relative = (bearing_to_vehicle − pedestrian_heading) mod 360
+```text
+відносний = (азимут_до_транспорту − напрямок_пішохода) mod 360
 front: 315–45°   right: 45–135°   back: 135–225°   left: 225–315°
 ```
 
-So "front / back / left / right" mean _relative to where the pedestrian is facing_ —
-not compass directions. This fixed an earlier bug where a scooter approaching head-on
-was mislabeled as coming "from behind". If the pedestrian has no heading, we assume they
-face north. Emitted both as a code (`front`) and a localized string
-(`спереду`) inside the bracelet message.
+Тож «спереду / позаду / ліворуч / праворуч» означають напрямок *відносно того, куди рухається пішохід*, а не сторони світу. Якщо в пішохода немає напрямку, вважаємо, що він орієнтований на північ. Напрямок передається і як код (`front`), і як локалізований рядок (`спереду`) у повідомленні браслета.
 
 ---
 
-## 8. Incident logging
+## 8. Журналювання інцидентів
 
-When a pair first reaches **critical**, the engine fires a fire-and-forget task to
-insert an `Incident` row (pedestrian, vehicle, lat/lon, distance). `critical_logged`
-guarantees one row per episode — the basis for a future near-miss heatmap. DB failures
-are swallowed so they can never take down the risk loop.
+Коли пара вперше досягає рівня **critical**, модуль запускає фонову задачу (background task), що вставляє рядок `Incident` (пішохід, транспорт, координати, відстань). Прапорець `critical_logged` гарантує один запис на епізод – основу для майбутньої карти небезпечних зближень. Помилки БД поглинаються, тож вони ніколи не зупиняють цикл ризику.
 
 ---
 
-## 9. Worked example — the `head_on` scenario
+## 9. Приклад сценарію
 
-The `head_on` scenario drives: pedestrian walking north at **0.4 m/s**, scooter
-approaching from ~**35 m** north at **3.0 m/s**, offset ~1.5 m so they pass side-by-side.
-Closing speed ≈ **3.4 m/s**.
+Емулятор задає: пішохід рухається на північ зі швидкістю **0.4 м/с**, самокат наближається з півночі з ~**35 м** зі швидкістю **3.0 м/с**, із боковим зміщенням ~1.5 м, тож вони розминаються поруч. Швидкість зближення ≈ **3.4 м/с**.
 
-| Time    | Distance | Severity     | What the pedestrian gets                        |
-| ------- | -------- | ------------ | ----------------------------------------------- |
-| ~0.0 s  | ~35 m    | safe         | (silence — nothing worth saying)                |
-| ~3.5 s  | ~24 m    | **caution**  | first buzz + "Транспорт спереду (24 м)"         |
-| ~6.5 s  | ~14 m    | **warning**  | stronger buzz, score climbs into 65–84          |
-| ~8.5 s  | ~7 m     | **critical** | strongest buzz, incident logged once            |
-| ~10.5 s | passing  | → **clear**  | `risk_clear`, console + bracelet return to idle |
+| Час     | Відстань | Рівень       | Що отримує пішохід                                |
+| ------- | -------- | ------------ | ------------------------------------------------- |
+| ~0.0 с  | ~35 м    | safe         | тиша – немає про що повідомляти                    |
+| ~3.5 с  | ~24 м    | **caution**  | перша вібрація + «Транспорт спереду (24 м)»        |
+| ~6.5 с  | ~14 м    | **warning**  | сильніша вібрація, скор зростає до 65–84           |
+| ~8.5 с  | ~7 м     | **critical** | найсильніша вібрація, інцидент записано один раз   |
+| ~10.5 с | минає    | → **clear**  | `risk_clear`, консоль і браслет повертаються в спокій |
 
-Each phase lasts ~2–3 s — deliberately long enough for a person to perceive and react to
-each step. De-escalation as the scooter recedes never produces a downgrade alert; the
-single `risk_clear` ends the episode cleanly.
+Кожна фаза триває ~2–3 с – достатньо, щоб людина сприйняла й відреагувала на кожен крок. Віддалення самоката не породжує попередження про зниження рівня; епізод завершує один `risk_clear`.
 
 ---
 
-## 10. Why these numbers were chosen
+## 10. Чому саме такі значення
 
-The constants encode a simple safety model rather than arbitrary tuning. The reasoning
-behind each group:
+Константи задають просту модель безпеки, а не довільне підлаштування. Нижче – обґрунтування кожної групи.
 
-### 10.1 Distance bands — `24 / 14 / 7 m`
+### 10.1 Діапазони відстані – `24 / 14 / 7 м`
 
-The bands are sized so each one buys a pedestrian a comparable amount of _lead time_ at
-typical micromobility speeds (an e-scooter/bike at ~4–7 m/s, i.e. ~15–25 km/h):
+Діапазони підібрані так, щоб кожен давав пішоходу співмірний *запас часу* за типової швидкості мікромобільності (~4–7 м/с, тобто ~15–25 км/год):
 
-| Band            | Distance | Lead time at 4–7 m/s | Intent                                             |
-| --------------- | -------- | -------------------- | -------------------------------------------------- |
-| caution         | 24 m     | ~3.5–6 s             | "Be aware" — enough time to look up and locate it  |
-| warning         | 14 m     | ~2–3.5 s             | "Act now" — start moving out of the path           |
-| critical        | 7 m      | ~1–1.7 s             | "Last chance" — at/near human reaction-time floor  |
+| Рівень   | Відстань | Запас часу за 4–7 м/с | Намір                                              |
+| -------- | -------- | --------------------- | -------------------------------------------------- |
+| caution  | 24 м     | ~3.5–6 с              | «зверни увагу» – встигнути підняти погляд і знайти джерело |
+| warning  | 14 м     | ~2–3.5 с              | «дій зараз» – почати зміщуватися з траєкторії       |
+| critical | 7 м      | ~1–1.7 с              | «останній шанс» – близько до межі часу реакції людини |
 
-They are spaced roughly geometrically (24 → 14 → 7, each step ≈ 1.7–2×) so successive
-rings add a similar increment of warning time instead of bunching up, and so the three
-risk-zone rings on the console are clearly distinguishable rather than nested tightly.
-7 m as the critical floor lines up with the point where, once inside it, a slow reaction
-leaves little room to avoid contact — which is why that band also triggers incident
-logging.
+Діапазони рознесені приблизно геометрично (24 → 14 → 7, крок ≈ 1.7–2×), тож кожне наступне кільце додає співмірний приріст часу, а не «злипається» з попереднім. Поріг `7 м` як критичний відповідає межі, після якої повільна реакція майже не лишає простору для уникнення – саме тому цей рівень ще й фіксує інцидент.
 
-### 10.2 TTC thresholds — `5 / 3 / 1.5 s`
+### 10.2 Пороги TTC – `5 / 3 / 1.5 с`
 
-Distance alone under-reacts to a fast approach, so time-to-conflict escalates severity
-independently. The thresholds mirror well-known reaction-time landmarks:
+Сама відстань недооцінює швидке наближення, тому час до конфлікту підвищує рівень незалежно. Пороги відповідають відомим орієнтирам часу реакції:
 
-- **1.5 s (critical)** ≈ the practical floor of human perception-plus-reaction time; if
-  contact is under ~1.5 s away, there is essentially only time to flinch.
-- **3 s (warning)** ≈ the "act now" window commonly used as a minimum safe following gap.
-- **5 s (caution)** ≈ early-awareness horizon; far enough to be a heads-up, near enough
-  to matter.
+- **1.5 с (critical)** ≈ практична межа часу сприйняття й реакції людини.
+- **3 с (warning)** ≈ типове «дій зараз», що використовують як мінімальний безпечний інтервал.
+- **5 с (caution)** ≈ горизонт ранньої уваги: достатньо далеко, щоб це було підказкою, і достатньо близько, щоб це мало значення.
 
-Because severity is `max(distance-band, TTC-band)`, a fast scooter still 20 m out but
-closing at high speed is correctly raised to warning/critical before it enters the tight
-distance rings.
+Оскільки рівень = `max(діапазон_відстані, діапазон_TTC)`, швидкий самокат за 20 м, який стрімко наближається, підвищується до warning/critical ще до входу у вужчі кільця відстані.
 
-### 10.3 Gating constants — `MIN_VEHICLE_SPEED 1.5 m/s`, `CLOSING_EPSILON 0.3 m`
+### 10.3 Пороги фільтрації – `MIN_VEHICLE_SPEED 1.5 м/с`, `CLOSING_EPSILON 0.3 м`
 
-- **`MIN_VEHICLE_SPEED_MPS = 1.5`** (~5.4 km/h) sits just above brisk walking pace. Below
-  it a "vehicle" is parked, idling, or drifting on GPS noise — not a dynamic threat — so
-  it is ignored. This is the single biggest false-alarm suppressor.
-- **`CLOSING_EPSILON_M = 0.3`** is the dead-band for the "is it closing?" test. Over one
-  0.5 s tick a vehicle genuinely closing at ~3 m/s moves ~1.5 m, far above 0.3 m, while
-  frame-to-frame GPS/positioning jitter is well under it. 0.3 m therefore separates real
-  approach from noise without adding perceptible lag; too small and the alert flickers on
-  jitter, too large and it reacts late.
+- **`MIN_VEHICLE_SPEED_MPS = 1.5`** (~5.4 км/год) трохи вище за швидку ходу. Нижче цього «транспорт» припаркований, стоїть або «дрейфує» через похибку GPS – це не динамічна загроза, тож ігнорується. Це найбільший фільтр хибних спрацювань (false positives).
+- **`CLOSING_EPSILON_M = 0.3`** – «мертва зона» (dead-band) для тесту зближення. За 0.5 с транспорт, що справді наближається зі швидкістю ~3 м/с, проходить ~1.5 м – значно більше за 0.3 м, тоді як покадрове тремтіння GPS помітно менше. Тож `0.3 м` відділяє реальне наближення від шуму без відчутної затримки.
 
-### 10.4 Score weights & normalization — `0.5 / 0.3 / 0.2` over `28 m / 8 s / 35 km/h`
+### 10.4 Ваги й нормалізація скору – `0.5 / 0.3 / 0.2` за `28 м / 8 с / 35 км/год`
 
-The 0–100 gauge blends three normalized components:
+- **Ваги `0.5 відстань · 0.3 TTC · 0.2 швидкість`.** Відстань домінує як найнадійніший і найзрозуміліший сигнал; TTC – другий за значенням, бо враховує *динаміку*; швидкість – невеликий доданок, що відображає «силу» можливого удару. Сума дорівнює 1, тож скор лишається в межах 0–100.
+- **`DISTANCE_SCORE_RANGE_M = 28`** трохи більше за діапазон caution (24 м), тож складова відстані ≈ 0 саме тоді, коли транспорт поза зоною попереджень, і плавно зростає при вході в кільця.
+- **`TTC_SCORE_HORIZON_S = 8`** трохи більше за поріг caution TTC (5 с), тож складова TTC починає впливати ще до першого попередження.
+- **`SPEED_SCORE_REF_KMH = 35`** близько до верхньої межі реалістичної швидкості самоката/велосипеда, тож звичайні швидкості дають помітну, але не насичену частку шкали.
 
-- **Weights `0.5 distance · 0.3 TTC · 0.2 speed`.** Distance dominates because it is the
-  most reliable and interpretable signal; TTC is the second-strongest because it captures
-  the _dynamics_; raw speed is a minor kicker reflecting how hard a hit would be. They sum
-  to 1 so the raw score stays in 0–100.
-- **`DISTANCE_SCORE_RANGE_M = 28`** is set just beyond the 24 m caution band, so the
-  distance component is ~0 exactly when a vehicle is out of alert range and rises smoothly
-  as it crosses the rings.
-- **`TTC_SCORE_HORIZON_S = 8`** is a little beyond the 5 s caution TTC, so the TTC
-  component starts contributing slightly before the first alert would fire.
-- **`SPEED_SCORE_REF_KMH = 35`** is near the upper end of realistic e-scooter/bike speed,
-  so ordinary speeds map to a meaningful, non-saturated fraction of the gauge.
+Далі «сира» сума обмежується діапазоном поточного рівня (розділ 5), тож число ніколи не суперечить мітці.
 
-The raw blend is then clamped into the current severity's band (§5) so the number can
-never disagree with the label.
+### 10.5 Часові константи – `LOOP 0.5 с`, `REFRESH 2.5 с`, `STALE 60 с`
 
-### 10.5 Timing constants — `LOOP 0.5 s`, `REFRESH 2.5 s`, `STALE 60 s`
-
-- **`LOOP_INTERVAL_SECONDS = 0.5`** matches the telemetry/emulation cadence: fast enough
-  for sub-second reaction, cheap enough to run every pair every tick.
-- **`REFRESH_INTERVAL_SECONDS = 2.5`** is the same-severity re-emit cadence — frequent
-  enough that the on-screen distance/TTC stay fresh, sparse enough to avoid a buzz stream.
-- **`STALE_DEVICE_SECONDS = 60`** drops devices (and their pair state) that have gone
-  silent for a minute, which both cleans up the scene and keeps hot state ephemeral for
-  privacy.
-
-### 10.6 Visualization scale — `METERS_TO_SCENE 0.85`
-
-The console's risk-zone rings are drawn at the engine's real thresholds so the picture
-cannot drift from the logic. On the 100-unit square scene (pedestrian anchored near the
-centre), `0.85` units per metre makes the 24 m caution ring ≈ 20 scene units in radius —
-large and legible, while still leaving the full ring inside the visible play area.
+- **`LOOP_INTERVAL_SECONDS = 0.5`** збігається з частотою телеметрії: достатньо швидко для субсекундної реакції й дешево, щоб щоразу оцінювати всі пари.
+- **`REFRESH_INTERVAL_SECONDS = 2.5`** – частота повтору того самого рівня: достатньо часто, щоб відстань і TTC на екрані лишалися свіжими, і достатньо рідко, щоб не було потоку вібросигналів.
+- **`STALE_DEVICE_SECONDS = 60`** прибирає пристрої (і стан їхніх пар), що мовчать хвилину. Це очищає сцену й тримає оперативний стан тимчасовим.
 
 ---
 
-## 11. Tuning cheat-sheet
+## 11. Параметри для налаштування
 
-All knobs live at the top of `risk_engine.py`:
+Усі «ручки» зібрано у верхній частині `risk_engine.py`:
 
-| Constant                              | Value                | Effect                                     |
-| ------------------------------------- | -------------------- | ------------------------------------------ |
-| `LOOP_INTERVAL_SECONDS`               | 0.5                  | Evaluation cadence                         |
-| `CAUTION/WARNING/CRITICAL_DISTANCE_M` | 24 / 14 / 7          | Severity distance bands                    |
-| `CAUTION/WARNING/CRITICAL_TTC_S`      | 5 / 3 / 1.5          | TTC escalation thresholds                  |
-| `MIN_VEHICLE_SPEED_MPS`               | 1.5                  | Ignore parked/idling vehicles              |
-| `CLOSING_EPSILON_M`                   | 0.3                  | Jitter tolerance for closing detection     |
-| `REFRESH_INTERVAL_SECONDS`            | 2.5                  | Same-severity re-emit cadence              |
-| `DISTANCE/TTC/SPEED` score refs       | 28 m / 8 s / 35 km/h | Gauge normalization                        |
-| `STALE_DEVICE_SECONDS`                | 60                   | Drop silent devices (and their pair state) |
+| Константа                             | Значення             | Вплив                                        |
+| ------------------------------------- | -------------------- | -------------------------------------------- |
+| `LOOP_INTERVAL_SECONDS`               | 0.5                  | Частота оцінювання                           |
+| `CAUTION/WARNING/CRITICAL_DISTANCE_M` | 24 / 14 / 7          | Діапазони відстані для рівнів                 |
+| `CAUTION/WARNING/CRITICAL_TTC_S`      | 5 / 3 / 1.5          | Пороги TTC для підвищення рівня              |
+| `MIN_VEHICLE_SPEED_MPS`               | 1.5                  | Ігнорування припаркованого/повільного транспорту |
+| `CLOSING_EPSILON_M`                   | 0.3                  | Допуск на похибку при визначенні зближення   |
+| `REFRESH_INTERVAL_SECONDS`            | 2.5                  | Частота повтору того самого рівня            |
+| `DISTANCE/TTC/SPEED` – опорні значення | 28 м / 8 с / 35 км/год | Нормалізація шкали скору                     |
+| `STALE_DEVICE_SECONDS`                | 60                   | Видалення мовчазних пристроїв і стану пар    |
 
-To make the escalation slower or faster, change the scenario speeds/positions in
-`simulation_runner.py` (or `emulator.py`) rather than these thresholds — the thresholds
-encode the _safety model_, the scenario definitions control the _pacing_ (see
-[`DEMO.md`](./DEMO.md)).
+Щоб зробити ескалацію повільнішою чи швидшою, змінюйте швидкості й позиції у сценарії емулятора (`emulator.py`), а не ці пороги: пороги кодують *модель безпеки*, а сценарій керує *темпом* (див. [`DEMO.md`](./DEMO.md)).

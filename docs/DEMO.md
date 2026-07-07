@@ -1,47 +1,37 @@
-# VARTA — Running the System
+# VARTA – запуск і демонстрація
 
-How to start VARTA locally, drive the built-in scenarios, and interpret what you see.
-Read [`ARCHITECTURE.md`](./ARCHITECTURE.md) and [`RISK_ENGINE.md`](./RISK_ENGINE.md) for
-the design and the algorithm behind the behavior described here.
+Документ описує, як запустити VARTA локально, відтворити демонстраційний сценарій і як тлумачити побачене. Архітектуру й алгоритм детально розглянуто в [`ARCHITECTURE.md`](./ARCHITECTURE.md) та [`RISK_ENGINE.md`](./RISK_ENGINE.md).
 
 ---
 
-## 1. The two views
+## 1. Що показує система
 
-Two screens react to the same event stream in sync:
+Два екрани реагують на той самий потік подій синхронно:
 
-- **`/demo` — operator console:** a live map with a green pedestrian at the centre,
-  surrounded by three **risk-zone rings** (24 m caution, 14 m warning, 7 m critical). An
-  approaching vehicle is drawn in red with a solid **threat arrow** pointing at the
-  pedestrian; other traffic is orange with an "other traffic (+N)" counter. An
-  "Active threat" card shows severity, risk score, distance, TTC, direction, and vehicle;
-  a rolling event timeline (with a **Clear history** button) logs alerts; and a
-  **scenario panel** lets the operator start/stop encounters and shows the live phase.
-- **`/bracelet` — the pedestrian's device:** a full-screen color that escalates
-  green → yellow → orange → red, the directional warning text, and a severity-specific
-  **vibration** pattern.
+- **`/demo` – демо-консоль оператора:** жива сцена з пішоходом (зелений) у центрі та транспортом, що наближається (червоний) із лінією напрямку загрози; інший рух показано окремо з лічильником. Картка «Активна загроза» містить рівень небезпеки, ризик-скор, відстань, TTC, напрямок і транспорт, а нижче – стрічка останніх подій.
+- **`/bracelet` – пристрій пішохода:** повноекранний стан, колір якого зростає зелений → жовтий → помаранчевий → червоний, текст напрямку загрози та **вібрація** з патерном під конкретний рівень.
 
-A typical encounter runs **calm → caution → warning → critical → cleared** in ~10 s.
+Типовий епізод проходить шлях **спокій → caution → warning → critical → clear** приблизно за 10 с.
 
 ---
 
-## 2. Prerequisites (once)
+## 2. Передумови
 
-- **Docker** running (for PostgreSQL).
-- **Python 3.11+** with a virtualenv.
-- **Node ≥ 22.12** for the frontend (Vite 8 / newer ESLint require it).
+- **Docker** (для PostgreSQL).
+- **Python 3.11+** з віртуальним середовищем.
+- **Node ≥ 22.12** для фронтенду (вимагають Vite 8 / новіший ESLint).
 
 ---
 
-## 3. Start the system
+## 3. Запуск системи
 
-**Terminal 1 — database**
+**Термінал 1 – база даних**
 
 ```bash
 docker compose up -d
 ```
 
-**Terminal 2 — backend** (from repo root)
+**Термінал 2 – бекенд** (з кореня репозиторію)
 
 ```bash
 python3 -m venv venv
@@ -50,126 +40,104 @@ pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
-Wait for "База даних успішно ініціалізована!" — startup also seeds `pedestrian_1` and
-`scooter_1` and launches the risk-engine loop.
+Дочекайтеся повідомлення «База даних успішно ініціалізована!» – на старті також засіваються `pedestrian_1` і `scooter_1` та запускається цикл оцінювання ризику.
 
-**Terminal 3 — frontend**
+**Термінал 3 – фронтенд**
 
 ```bash
 cd frontend
 npm install
-npm run dev                          # add -- --host 0.0.0.0 to open on a phone
+npm run dev                          # додайте -- --host 0.0.0.0, щоб відкрити на телефоні
 ```
 
-**Open the views:**
+**Відкрийте екрани:**
 
-- Console → `http://localhost:5173/demo`
-- Bracelet → `http://localhost:5173/bracelet` (open on a real phone via the host IP for
-  the vibration effect; a second browser window works too)
+- Консоль → `http://localhost:5173/demo`
+- Браслет → `http://localhost:5173/bracelet` (для вібрації відкрийте на телефоні через IP хоста; підійде й друге вікно браузера)
 
-Both headers should read **Live**.
+У шапці обох екранів має бути стан **Наживо**.
 
 ---
 
-## 4. Run a scenario (from the console)
+## 4. Запуск сценарію (емулятор)
 
-The console drives everything — no extra terminal needed. In the **scenario panel** on
-`/demo`, pick a scenario and press **Start**. The backend scenario runner streams the
-scripted actors into hot state, the risk engine reacts, and both views update. Press
-**Stop** (or start another scenario) to end it; the runner purges its own actors so the
-map is left clean.
-
-| Scenario                         | What it demonstrates                                              |
-| -------------------------------- | ----------------------------------------------------------------- |
-| **Scooter head-on**              | The canonical caution → warning → critical → clear arc from front |
-| **Bike crossing from the side**  | A crossing conflict, reported as a `right`-side direction         |
-| **Scooter overtaking from behind** | An overtake-and-pass, reported as a `back` direction            |
-| **Busy street (scooter + bike)** | Two vehicles at once; the console highlights the primary threat   |
-
-**Alternative — CLI emulator.** `emulator.py` produces the same telemetry from the
-command line (venv active, from repo root):
+**Термінал 4 – сценарій руху** (з активним venv, з кореня репозиторію)
 
 ```bash
-python emulator.py                   # add --with-bike for a second, crossing vehicle
+python emulator.py                   # додайте --with-bike для другого транспорту, що перетинає шлях
 ```
 
-It stops itself cleanly after a short stabilization phase. Use it when you want a
-headless driver; otherwise the console scenario panel is the simpler path.
+Емулятор надсилає телеметрію пішохода й самоката, що наближаються назустріч, і завершується самостійно після короткої фази стабілізації – без «залишкового тремтіння» об'єктів на сцені. Запускайте команду знову, щоб повторити епізод.
+
+Прапорець `--with-bike` додає другий транспортний засіб, який перетинає траєкторію збоку, – зручно, щоб побачити роботу з кількома об'єктами й вибір основної загрози.
 
 ---
 
-## 5. What to expect, phase by phase (`head_on`)
+## 5. Очікувана поведінка по фазах
 
-| Phase        | Console                                                            | Bracelet                                  |
-| ------------ | ----------------------------------------------------------------- | ----------------------------------------- |
-| **caution**  | Vehicle enters the outer (24 m) ring; threat arrow appears; card shows caution + score in 45–64 | yellow, soft buzz, direction text (e.g. "спереду") |
-| **warning**  | Vehicle crosses the 14 m ring; escalates immediately; score 65–84 | orange, stronger buzz                     |
-| **critical** | Vehicle inside the 7 m ring; score 85–100; incident logged once   | red, strongest vibration pattern          |
-| **clear**    | Vehicle passes and is no longer closing; a single `risk_clear`    | returns to green/idle                     |
+```mermaid
+flowchart LR
+    S["спокій<br/>safe"] --> C["caution<br/>~24 м"]
+    C --> W["warning<br/>~14 м"]
+    W --> Cr["critical<br/>~7 м"]
+    Cr --> Cl["clear<br/>транспорт минув"]
+```
 
-Escalation is immediate (a rising threat never waits on a timer); de-escalation as the
-vehicle recedes is suppressed, so you get exactly one alert per severity plus one clear —
-never a downgrade flicker. See
-[`RISK_ENGINE.md`](./RISK_ENGINE.md#6-emission-policy--say-something-only-when-it-matters).
+| Фаза         | Консоль                                                              | Браслет                                        |
+| ------------ | ------------------------------------------------------------------- | ---------------------------------------------- |
+| **caution**  | Транспорт з'являється поблизу, картка показує caution і скор 45–64   | жовтий, м'яка вібрація, текст напрямку          |
+| **warning**  | Рівень зростає одразу, скор 65–84, основну загрозу підсвічено        | помаранчевий, сильніша вібрація                 |
+| **critical** | Скор 85–100, інцидент записано один раз                              | червоний, найсильніший патерн вібрації          |
+| **clear**    | Транспорт минув і більше не наближається – один `risk_clear`          | повертається до спокійного стану                |
 
----
-
-## 6. Design FAQ
-
-**Is this real GPS?** The pipeline is real end-to-end — telemetry API, risk engine,
-WebSocket, UI. The scenario runner (or emulator) stands in for hardware so encounters are
-reproducible; a real device would `POST` the identical payload to `/api/telemetry`.
-
-**How are false alarms avoided?** Three gates: the vehicle must be moving (> 1.5 m/s), it
-must be _closing_ (with a jitter epsilon), and de-escalation is suppressed so severity
-never flickers. Non-threats produce nothing.
-
-**Won't it spam the user?** No — the emission policy yields about one alert per severity
-step plus one clear per encounter. Same-severity refreshes are throttled to every 2.5 s.
-
-**Does it scale?** Today it is single-process with in-memory hot state (low latency,
-simple). Production would swap that for a shared store / stream and shard pairs spatially
-(see §8). The contracts and risk logic stay the same.
-
-**How is direction correct?** It is computed relative to the pedestrian's heading, not
-compass north, so "front / back / left / right" mean what the person actually experiences.
-
-**What about privacy?** Hot state is ephemeral and auto-expires after 60 s; only
-anonymized near-miss incidents (location + distance) are persisted.
+Ескалація миттєва (зростання ризику не чекає на таймер), а зниження рівня під час наближення приховується. Тож на один епізод припадає рівно одне попередження на кожен рівень плюс одне завершення – без «мерехтіння». Деталі політики – у [`RISK_ENGINE.md`](./RISK_ENGINE.md#6-політика-генерації-подій).
 
 ---
 
-## 7. Verifying a healthy setup
+## 6. Часті питання
 
-- [ ] Console and bracelet both show **Live** (green).
-- [ ] `GET http://localhost:8000/api/active-devices` returns devices.
-- [ ] `GET http://localhost:8000/api/simulation/scenarios` lists the four scenarios.
-- [ ] Starting a scenario yields caution → warning → critical → clear on both views.
-- [ ] Phone volume/vibration on; screen won't sleep (for the vibration effect).
+**Це справжній GPS?** Програмний ланцюг реальний повністю – API телеметрії, модуль ризику, WebSocket, інтерфейс. Емулятор замінює обладнання, щоб епізод був відтворюваним; реальний пристрій надсилав би такий самий кадр на `/api/telemetry`.
 
----
+**Як уникаються хибні спрацювання?** Три фільтри: транспорт має рухатися (> 1.5 м/с), має *наближатися* (з допуском на похибку) і зниження рівня приховується, тож стан не «мерехтить». Не-загрози не породжують нічого.
 
-## 8. Roadmap / production path
+**Чи не буде забагато сповіщень?** Ні – політика дає приблизно одне попередження на рівень плюс одне завершення епізоду. Повтори того самого рівня обмежені до одного разу на 2.5 с.
 
-| MVP today                       | Production next                                                         |
-| ------------------------------- | ----------------------------------------------------------------------- |
-| In-memory dict + single process | Redis / streaming state, spatially-sharded pair evaluation              |
-| Scripted scenarios / emulator   | Real device SDK (phone app + vehicle tracker) posting the same contract |
-| Closing-speed TTC heuristic     | Full trajectory-intersection prediction, map/lane context               |
-| `create_all` on boot            | Alembic migrations                                                      |
-| Near-miss rows in Postgres      | City dashboard: near-miss heatmaps, hotspot analytics for planners      |
-| Local-network deployment        | TLS, auth on telemetry + WebSocket, per-device tokens                   |
+**Чи масштабується це?** Наразі це один процес зі станом у пам'яті (in-memory state) – мала затримка й простота. У продакшені (production) його замінює спільне сховище чи потокова обробка (streaming) з просторовим розподілом пар (spatial sharding). Контракти й логіка ризику при цьому не змінюються.
+
+**Чому напрямок правильний?** Він обчислюється відносно напрямку руху пішохода, а не сторін світу, тож «спереду / позаду / ліворуч / праворуч» означають те, що людина відчуває насправді.
+
+**Як щодо приватності?** Оперативний стан тимчасовий і автоматично зникає через 60 с; зберігаються лише знеособлені критичні епізоди (координати + відстань).
 
 ---
 
-## 9. Troubleshooting
+## 7. Перевірка працездатності
 
-| Symptom                                  | Fix                                                                                                                            |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Console/bracelet stuck "Connecting"      | Backend not up, or wrong `VITE_WS_URL`. Confirm `uvicorn` on :8000.                                                            |
-| Scenario panel is empty / Start does nothing | Backend not reachable; check `GET /api/simulation/scenarios` and the backend log.                                          |
-| Nothing happens when a scenario runs     | Ensure the seed created `pedestrian_1` (check backend startup log); the bracelet client id must be `pedestrian_1`.            |
-| Emulator: `ModuleNotFoundError: aiohttp` | venv not active / deps not installed. `source venv/bin/activate && pip install -r requirements.txt`.                          |
-| Actors "drag" across the map on restart  | Fixed — the scene snaps actors to fresh scenario start positions instead of sliding; re-pull latest.                          |
-| Phone doesn't vibrate                    | Browser vibration needs a real device + user gesture; the on-screen color/pattern still demonstrates it.                      |
-| Frontend build/lint fails on Node 20     | Use Node ≥ 22.12 (see `frontend/package.json` `engines`).                                                                     |
+- [ ] Консоль і браслет показують стан **Наживо**.
+- [ ] `GET http://localhost:8000/api/active-devices` повертає пристрої.
+- [ ] Запуск емулятора дає послідовність caution → warning → critical → clear на обох екранах.
+- [ ] На телефоні увімкнено звук/вібрацію, екран не гасне (для ефекту вібрації).
+
+---
+
+## 8. Траєкторія розвитку
+
+| Поточний MVP                        | Наступні кроки                                                          |
+| ----------------------------------- | ----------------------------------------------------------------------- |
+| Стан у пам'яті, один процес          | Спільне/потокове сховище (streaming), просторовий розподіл (sharding) оцінювання пар |
+| Телеметрію задає емулятор            | SDK реального пристрою (застосунок + трекер транспорту) з тим самим контрактом |
+| Спрощений TTC за швидкістю зближення | Повний розрахунок перетину траєкторій, контекст карти й смуг руху        |
+| `create_all` на старті               | Міграції (migrations) через Alembic                                     |
+| Критичні епізоди в PostgreSQL        | Міська панель: теплові карти (heatmaps) небезпечних зближень, аналітика для планування |
+| Локальний запуск                     | TLS, автентифікація телеметрії та WebSocket, токени пристроїв            |
+
+---
+
+## 9. Усунення несправностей
+
+| Симптом                                     | Що зробити                                                                                                     |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Консоль/браслет застрягли на «З'єднання…»    | Бекенд не запущено або неправильний `VITE_WS_URL`. Перевірте, що `uvicorn` працює на порту 8000.              |
+| Емулятор: `ModuleNotFoundError: aiohttp`     | Не активоване venv або не встановлені залежності: `source venv/bin/activate && pip install -r requirements.txt`. |
+| Нічого не відбувається під час запуску емулятора | Переконайтеся, що засіяно `pedestrian_1` (див. лог старту бекенду); клієнтський id браслета має бути `pedestrian_1`. |
+| Телефон не вібрує                            | Вібрація в браузері потребує реального пристрою та дії користувача; колір і патерн на екрані все одно демонструють ефект. |
+| Збірка/лінт фронтенду падає на Node 20       | Використовуйте Node ≥ 22.12 (див. `engines` у `frontend/package.json`).                                       |
